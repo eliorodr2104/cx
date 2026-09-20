@@ -1,0 +1,579 @@
+{
+  "project": "Cx",
+  "revision": "2026-09-20 consolidated design draft",
+  "language": "en",
+  "scope": "Documentation only; no compiler or benchmark execution",
+  "source_archives": [
+    {
+      "name": "language-updated.zip",
+      "sha256": "dd360871e6092e200b3189b713cff7c96fdba12b9af3926683ea3aa12266d6fb",
+      "bytes": 30196
+    },
+    {
+      "name": "Cx-Compiler.zip",
+      "sha256": "31c851172374f55ff429fd5c5dc11017bff9a0313e164d144732eeae1bee8ca1",
+      "bytes": 24992
+    }
+  ],
+  "counts": {
+    "markdown_total": 90,
+    "baseline_markdown_updated": 38,
+    "new_markdown": 52,
+    "markdown_by_section": {
+      "language": 34,
+      "Compiler": 16,
+      "design": 13,
+      "abi": 8,
+      "runtime": 4,
+      "stdlib": 9
+    },
+    "root_markdown": 6
+  },
+  "structural_validation": {
+    "relative_links_and_anchors_checked": 211,
+    "fenced_blocks": 111,
+    "errors": []
+  },
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 3436,
+      "sha256": "382c80e10ddeebbaae9cba586ad9b1047d0663e267dad6e8882db693f832e671",
+      "change": "new"
+    },
+    {
+      "path": "Compiler/README.md",
+      "bytes": 1008,
+      "sha256": "482a6285b64b088f75e3579a7c20ae5d4a5ec7f829dced1d8a7fa24d8233b9ef",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/architecture.md",
+      "bytes": 3281,
+      "sha256": "574e790655fce068b0c6c431f5739ca53685ff811c61c8b31b73cb38b2a7dcf6",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/ast.md",
+      "bytes": 3010,
+      "sha256": "c7f0fad50f8cf00e40c7b48b2abfdce029cbc4325a29ed73eda743410cc97b7e",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/benchmarking.md",
+      "bytes": 2720,
+      "sha256": "88c320fcad6f043bf76383341983ae03ddd3de3326286165df234b2ba3c232d8",
+      "change": "new"
+    },
+    {
+      "path": "Compiler/clang-integration.md",
+      "bytes": 3298,
+      "sha256": "fd25519e98e08b1d6ce1c2e468d61c59d0fbc42f164584537385da3a1fe82cfc",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/codegen.md",
+      "bytes": 3627,
+      "sha256": "06a5e0e0c2177e546a9d804e789ca6f97a61211de52c2e2b55179e85f7429b53",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/compatibility.md",
+      "bytes": 2674,
+      "sha256": "edaf7ffc76b07d4c8031dcc31714a0bc0011f97662a2eadd3d32f98592fabf6f",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/diagnostics.md",
+      "bytes": 2785,
+      "sha256": "caca3d40c3da1591f9a010af3ad7034a1ffbfef013c0ebd34f78fa5e1cef9f06",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/feature-matrix.md",
+      "bytes": 2365,
+      "sha256": "04bbc08f8f87cf5e27cf67e88eccc28d9b491bfc2c9d430502deb4bca20116a7",
+      "change": "new"
+    },
+    {
+      "path": "Compiler/frontend-pipeline.md",
+      "bytes": 2702,
+      "sha256": "41aae08d2d1bee6af852777c9612982fbe13cbcf9d5fdb6cbf8b0f456362c2b9",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/implementation-roadmap.md",
+      "bytes": 4578,
+      "sha256": "4d367513781ad987ef95e83a4dc07bfcb69e7a99679d883f6bc578c1fe77b520",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/language-mode.md",
+      "bytes": 2083,
+      "sha256": "1d55b9d7181ca0afa4333c1d815890333b82cd5be75b6d15bfbe623f901a8c8d",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/module-artifacts.md",
+      "bytes": 2413,
+      "sha256": "f09d5647a3a6abddd1ac78fc979a82112c8c39570823816e19c3712cf86f5e45",
+      "change": "new"
+    },
+    {
+      "path": "Compiler/parser.md",
+      "bytes": 3294,
+      "sha256": "ed1f6de9fe387393922e5c7de01943cd208f9e87139bf445f6d38a3e5c1bc3df",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/sema.md",
+      "bytes": 3843,
+      "sha256": "7e9db4beb66a3f9ad1e08054c0da93cef69471c089915165fcbbfdb6814bef23",
+      "change": "updated"
+    },
+    {
+      "path": "Compiler/testing.md",
+      "bytes": 3901,
+      "sha256": "45500f0bc5443fa9d9a367742bf7732d98bb8bbb0c06f9fb773e3e6511286693",
+      "change": "updated"
+    },
+    {
+      "path": "DECISIONS.md",
+      "bytes": 5562,
+      "sha256": "fa1625a8b3d0dc9ef9512e6363d996cb426da8982e544b734b0151c0ff5c6f62",
+      "change": "new"
+    },
+    {
+      "path": "OPEN-ISSUES.md",
+      "bytes": 9998,
+      "sha256": "a196301c1a0dd2397c9cd22534d810081fb18d2f891781fc7c926974a41f632b",
+      "change": "new"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2894,
+      "sha256": "d03214461ee97c27194e4f475256618cbd02d05b4cd8907eb7df148a1556c00b",
+      "change": "new"
+    },
+    {
+      "path": "SOURCES.md",
+      "bytes": 4094,
+      "sha256": "2fa78b7c4f2a023ef6714b9d92162d9fa0db97af09006a0c727f910ecea8c83c",
+      "change": "new"
+    },
+    {
+      "path": "VALIDATION.md",
+      "bytes": 4482,
+      "sha256": "8fa76f52675dc39113b0e37379524af275479cd5d6d2f4610e49607deee83b56",
+      "change": "new"
+    },
+    {
+      "path": "abi/README.md",
+      "bytes": 688,
+      "sha256": "0c74fb10ecf44dc37349329788f93496d39e463bcc0bef65458de766f9b86da5",
+      "change": "new"
+    },
+    {
+      "path": "abi/callables.md",
+      "bytes": 2901,
+      "sha256": "1356e16bdc5307782edfab875cb1490ec78b48f318700f7cbb2b3a685c09a418",
+      "change": "new"
+    },
+    {
+      "path": "abi/enums-and-tuples.md",
+      "bytes": 2343,
+      "sha256": "1931b59c582af685af95b1e42316e0e6cdd7cb2126ef71c1aad4de5ffbf8c42a",
+      "change": "new"
+    },
+    {
+      "path": "abi/errors-and-c-export.md",
+      "bytes": 3182,
+      "sha256": "b85b91aa600052896534b48b5834a1f669647f6f419456f304c31517675a373f",
+      "change": "new"
+    },
+    {
+      "path": "abi/existentials.md",
+      "bytes": 3068,
+      "sha256": "c5f25feaa3aa4d0b5f714d73ed89fa2ddda26e728ae92fe62b0147db1cdab3b3",
+      "change": "new"
+    },
+    {
+      "path": "abi/linkage-and-mangling.md",
+      "bytes": 2808,
+      "sha256": "95b7c93aceb51d69b3519cdcee1877ac65bc6d3c37e99e63d68037d1f743c7e8",
+      "change": "new"
+    },
+    {
+      "path": "abi/modules-and-generics.md",
+      "bytes": 3063,
+      "sha256": "f4a7307d5d0e18c990fada2dfcb2f78be699346e8c9b750871a75bf0cc4ad5a9",
+      "change": "new"
+    },
+    {
+      "path": "abi/reference-types.md",
+      "bytes": 2370,
+      "sha256": "50644d5999d9d365e4c1748cad98d1ebbf3a6eca022966ec82277f1c6c7a829c",
+      "change": "new"
+    },
+    {
+      "path": "design/0001-c-continuity.md",
+      "bytes": 1342,
+      "sha256": "56760dee0b260100193e685bae91ce3c99a11d2f79bf50149370ef02b21f4715",
+      "change": "new"
+    },
+    {
+      "path": "design/0002-labels-and-callables.md",
+      "bytes": 1384,
+      "sha256": "fc1e789ee46a91a5e577fa99c3c8ab4a8e51a2bcc281c8eb3b9a403f14124c8d",
+      "change": "new"
+    },
+    {
+      "path": "design/0003-source-and-access.md",
+      "bytes": 1370,
+      "sha256": "3eb1055ecb4568a433786e4bdd47c770e28e6ee2d70f69cf29688c84c0586fb3",
+      "change": "new"
+    },
+    {
+      "path": "design/0004-modules-and-ownership.md",
+      "bytes": 1245,
+      "sha256": "34054d176ae835fd489583574cc54fdc02be91c050fbc93b05ae67e97ce8e906",
+      "change": "new"
+    },
+    {
+      "path": "design/0005-value-and-reference-semantics.md",
+      "bytes": 1254,
+      "sha256": "c5aaf792d5e7c0c7955eaccae90e51f5464dd0bcfb6b1c6735f88d120a95be2b",
+      "change": "new"
+    },
+    {
+      "path": "design/0006-construction-and-destruction.md",
+      "bytes": 1260,
+      "sha256": "084bb3266f760febbaafc737ed2ef86521e4a22d50b4b1a9a5fd60e46ba69ddd",
+      "change": "new"
+    },
+    {
+      "path": "design/0007-properties-and-subscripts.md",
+      "bytes": 1263,
+      "sha256": "86b960a23f8d25bf428be567e534ed0343c10518c9d2133f96360e68713ce1fa",
+      "change": "new"
+    },
+    {
+      "path": "design/0008-protocols-and-generics.md",
+      "bytes": 1324,
+      "sha256": "c6881bf732fc8240c76327586ce83c8a576835f21bfcde8b8cdb82e120d66c7a",
+      "change": "new"
+    },
+    {
+      "path": "design/0009-errors-and-c-bridges.md",
+      "bytes": 1210,
+      "sha256": "e642f4b1f78e0f7167e3d01e9e039483ce767ea8f609c29b7321ef1888d0c0f4",
+      "change": "new"
+    },
+    {
+      "path": "design/0010-enums-and-tagging.md",
+      "bytes": 1227,
+      "sha256": "3be4aa9e5d812a619c76f53a03159bba7acef838cf01dac0d27deb21107e11f5",
+      "change": "new"
+    },
+    {
+      "path": "design/0011-library-surface.md",
+      "bytes": 1238,
+      "sha256": "0cd31ff35e0347a3194ba2c4c49a42514c2cf744a5311245cd99bf2dbe4dc3b5",
+      "change": "new"
+    },
+    {
+      "path": "design/0012-runtime-and-measurement.md",
+      "bytes": 1298,
+      "sha256": "966aede344b4c70a85e10a8a2193e19cc11907808b8c59a34dadc039984a2b0d",
+      "change": "new"
+    },
+    {
+      "path": "design/README.md",
+      "bytes": 1279,
+      "sha256": "c70c5a780a73b9da4f0a91736058bc92936026072329df95626dd327a7a54407",
+      "change": "new"
+    },
+    {
+      "path": "language/README.md",
+      "bytes": 1564,
+      "sha256": "525a4a37a702d92db0819b429ebe7a28ea96cea982aeb01df8c47fddd7d5a395",
+      "change": "updated"
+    },
+    {
+      "path": "language/access-control.md",
+      "bytes": 2880,
+      "sha256": "77bc07eed2ff0104d45171e4b15d6a902be3a27a2ed2cfd4673455cec2c8c711",
+      "change": "new"
+    },
+    {
+      "path": "language/c-compatibility.md",
+      "bytes": 2834,
+      "sha256": "aeb5be86108a7e8848b93287c5ac43ef7627252f3312aae71b8684fd4d5ec80c",
+      "change": "updated"
+    },
+    {
+      "path": "language/classes.md",
+      "bytes": 2253,
+      "sha256": "e89abf9777509ec73d6da5b6bb0656b27fa3d0ee77ad1dc5f2f324031d5cd330",
+      "change": "updated"
+    },
+    {
+      "path": "language/closures.md",
+      "bytes": 3367,
+      "sha256": "763e222ac1ceb99a88e00ded20bc4a9b754bbe46073b0516ef891293e04127db",
+      "change": "updated"
+    },
+    {
+      "path": "language/defer.md",
+      "bytes": 1669,
+      "sha256": "cf5c6e879afa3642677ff326412d289b392fe15143354565536971da61aecebd",
+      "change": "updated"
+    },
+    {
+      "path": "language/enums.md",
+      "bytes": 2610,
+      "sha256": "ebd4c8b0468e4456721c0ddfe4a92a86ae82b86a76947fdf8a99d4658b3b9140",
+      "change": "updated"
+    },
+    {
+      "path": "language/errors.md",
+      "bytes": 3906,
+      "sha256": "c2981f55622176f80704153229cfdb508e9e270d50246f959f60f028f1e1a785",
+      "change": "updated"
+    },
+    {
+      "path": "language/extensions.md",
+      "bytes": 1947,
+      "sha256": "464921c7c67c1991e02030623a8e7b48366b37375500a03193d2fe5a506f907f",
+      "change": "updated"
+    },
+    {
+      "path": "language/functions.md",
+      "bytes": 2823,
+      "sha256": "c9e1d2f0de7b7a52f32c612ace50344b75e715752445fbbfd61d51edd64a1ec6",
+      "change": "updated"
+    },
+    {
+      "path": "language/generics.md",
+      "bytes": 2845,
+      "sha256": "1e1945ab13e9a30a287eb843f9706bc29fcade6cf71f2c2bdd30c8ff62cadaa7",
+      "change": "new"
+    },
+    {
+      "path": "language/initializers.md",
+      "bytes": 3357,
+      "sha256": "9303f6236fe4f45fdb97e58bfdae97baa5f55824fa01c575a58a12f0764e575f",
+      "change": "updated"
+    },
+    {
+      "path": "language/iteration.md",
+      "bytes": 1741,
+      "sha256": "5408d8eca290ba6c6af3cfd984b10b8e3cf0f5210af08768288e4b39f30f9de3",
+      "change": "updated"
+    },
+    {
+      "path": "language/lexical-rules.md",
+      "bytes": 2499,
+      "sha256": "0a4b9aa9139799b41fcc67127ad087b84700401b45a927f1dcf7d6254a1d6e4d",
+      "change": "updated"
+    },
+    {
+      "path": "language/literals.md",
+      "bytes": 1743,
+      "sha256": "e49d3abed3bc9d077fb0622ec327e6e25118c828db45babb0912d3594abab962",
+      "change": "new"
+    },
+    {
+      "path": "language/memory.md",
+      "bytes": 2813,
+      "sha256": "f810ecf12bffc27cdb7a93070e3d7934f915e0fc1feb5982d080697906816f7a",
+      "change": "updated"
+    },
+    {
+      "path": "language/modules.md",
+      "bytes": 2783,
+      "sha256": "a78b87eb2f3d264374a2542194250349393db9feabb770f82632fc93a390c23f",
+      "change": "new"
+    },
+    {
+      "path": "language/nullability.md",
+      "bytes": 2852,
+      "sha256": "f0911821b47d2db167052cec4a05097019a3e74bf4b56c043e4682b7e8b8caca",
+      "change": "updated"
+    },
+    {
+      "path": "language/open-questions.md",
+      "bytes": 2498,
+      "sha256": "c83ce983be7c79ed13643afe5f4dfc579031cd11c91dd4f9f9d0573d8981fdc5",
+      "change": "updated"
+    },
+    {
+      "path": "language/operators.md",
+      "bytes": 2355,
+      "sha256": "8ec9e1f8685282fccead3eab436d693f60e5dcffcf40d648621e669208b61a3a",
+      "change": "new"
+    },
+    {
+      "path": "language/optionsets.md",
+      "bytes": 1920,
+      "sha256": "adb4dfa81984ddaac20d6f1778be91ec02eccd625c5d74c1088483a570b44929",
+      "change": "new"
+    },
+    {
+      "path": "language/overloads.md",
+      "bytes": 2412,
+      "sha256": "71203991cd08f9e6d29309b1fe407c510d6be71ef01afe2f7b7d6c7f3d65d84f",
+      "change": "updated"
+    },
+    {
+      "path": "language/philosophy.md",
+      "bytes": 1853,
+      "sha256": "849c6152f95b4c2fc534789b5499d1d295194a85913580cc036bec90dad918a3",
+      "change": "updated"
+    },
+    {
+      "path": "language/pointer-tagging.md",
+      "bytes": 3351,
+      "sha256": "198921ff1938004bc99d185b67cff511594025904146c041818dc8bfc817b110",
+      "change": "updated"
+    },
+    {
+      "path": "language/pointers.md",
+      "bytes": 1624,
+      "sha256": "42bca6c5752bc699895b472ed963e667eda6755d75ac4ea82f4c3ff52c84bcf6",
+      "change": "updated"
+    },
+    {
+      "path": "language/properties.md",
+      "bytes": 2314,
+      "sha256": "2d380b29aa01620acd5c13b18b059595ebb6c58da32a4d776a730c1f02b71e4f",
+      "change": "new"
+    },
+    {
+      "path": "language/protocols.md",
+      "bytes": 3435,
+      "sha256": "fda35dc5ddc2a776b1f63fd9577a571f0586502693f6b2dfc0c85d7c642e885b",
+      "change": "updated"
+    },
+    {
+      "path": "language/source-model.md",
+      "bytes": 3293,
+      "sha256": "f04147af4f75c5c261e52be4098ac025f4de20363e37bd3cb9ba7b3ee38fce6d",
+      "change": "new"
+    },
+    {
+      "path": "language/spans.md",
+      "bytes": 1486,
+      "sha256": "a702a641bcf17e1b263ab0d953d7330e606a5fbce00d23fe93947f0f1bbed624",
+      "change": "updated"
+    },
+    {
+      "path": "language/strings.md",
+      "bytes": 1730,
+      "sha256": "b2370ff45d1b99faff17f596f909c5397aeea220ff5a0f3d2d14b6104eec5e82",
+      "change": "updated"
+    },
+    {
+      "path": "language/structs.md",
+      "bytes": 2642,
+      "sha256": "dbda25896e7ccf65b7f77fe71056dad066a08907907ad9b8829056ef04f6b326",
+      "change": "updated"
+    },
+    {
+      "path": "language/subscripts.md",
+      "bytes": 1801,
+      "sha256": "88a23322dcec9ca20a82302541d31677aea2c69cdd15920704bc2e2776517621",
+      "change": "new"
+    },
+    {
+      "path": "language/tuples.md",
+      "bytes": 1798,
+      "sha256": "35202145c1efcb46e25023947b0160a4c323341033dc6f1c3314ccd492cf033b",
+      "change": "updated"
+    },
+    {
+      "path": "language/variables.md",
+      "bytes": 2372,
+      "sha256": "174e333b031067218ca6e2a65e8581b8002e72cac7eb75bfae93034abddd1922",
+      "change": "updated"
+    },
+    {
+      "path": "runtime/README.md",
+      "bytes": 444,
+      "sha256": "e7e5c0e295e9e41f7ce9867c30820a35923a9d4b6ce032b64b1d56b486da45c3",
+      "change": "new"
+    },
+    {
+      "path": "runtime/initialization-and-cleanup.md",
+      "bytes": 2284,
+      "sha256": "96daeecac2e29098995518720b53f963de0e8c9f1410d22be90b931b3276b35d",
+      "change": "new"
+    },
+    {
+      "path": "runtime/ownership.md",
+      "bytes": 2477,
+      "sha256": "73817e6125d5a15b37b4bdeaddf1706c613acb9be406c6fb04b0a91c16fdeb62",
+      "change": "new"
+    },
+    {
+      "path": "runtime/weak-references.md",
+      "bytes": 1876,
+      "sha256": "ff26e06d7168af7c9ca5f7c77c57a7a41008feb5481cb3f13a0d2fa42b70c6f2",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/README.md",
+      "bytes": 749,
+      "sha256": "4033381cb063a3d816e91d1518733da5d7e246cb8492f11b31702053b3351181",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/array.md",
+      "bytes": 2535,
+      "sha256": "579f0294cab7b36ed9330153b26f1260872de195b202c0c1d2f2c3babcbd22fd",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/dictionary-set.md",
+      "bytes": 2295,
+      "sha256": "42e07554213cc931dd9c465582746fbeb2a01d07d9ea97e8892f2763cf4d0121",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/memory-and-interop.md",
+      "bytes": 2046,
+      "sha256": "97439f7bc309cc5047c629ab81b03891927977c5f319dcb07ddef9e7a44a31f2",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/optional-result.md",
+      "bytes": 2062,
+      "sha256": "6c1636812f2482403040028cf5fc04f3e08f505465b620d0ec91ce353ee75325",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/protocols.md",
+      "bytes": 2180,
+      "sha256": "691a0b8087d8b92b054688712f13504e79c5ee794f23a3afd9d1ffa981c717cc",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/ranges-iteration.md",
+      "bytes": 2414,
+      "sha256": "3ef13203ae20eeace9930e29fe3899556d8f42fd383a7a5880819a5ae7fc01e7",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/span.md",
+      "bytes": 2553,
+      "sha256": "691fccc03f92bcb7bb2c8779ec3ef6be289b8f2955baaa3c8768e6090508998c",
+      "change": "new"
+    },
+    {
+      "path": "stdlib/string.md",
+      "bytes": 2835,
+      "sha256": "9f8e527942035145c2003694de4e191dd7fc2e90b0965b0f4898264b30b8ada3",
+      "change": "new"
+    }
+  ]
+}
