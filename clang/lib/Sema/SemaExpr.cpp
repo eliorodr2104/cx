@@ -2914,6 +2914,13 @@ ExprResult Sema::ActOnIdExpression(Scope *S, CXXScopeSpec &SS,
   if (R.isAmbiguous())
     return ExprError();
 
+  // Cx: `null` is the contextual null-pointer literal, with C23 nullptr
+  // semantics. Any visible declaration or macro with that name wins, which is
+  // exactly what an empty lookup rules out here.
+  if (R.empty() && SS.isEmpty() && !HasTrailingLParen && II &&
+      getLangOpts().CX && II->isStr("null"))
+    return ActOnCXXNullPtrLiteral(NameLoc);
+
   // This could be an implicitly declared function reference if the language
   // mode allows it as a feature.
   if (R.empty() && HasTrailingLParen && II &&
@@ -10024,8 +10031,8 @@ AssignConvertType Sema::CheckAssignmentConstraints(QualType LHSType,
     return AssignConvertType::Incompatible;
   }
 
-  // Conversion to nullptr_t (C23 only)
-  if (getLangOpts().C23 && LHSType->isNullPtrType() &&
+  // Conversion to nullptr_t (C23 and Cx only)
+  if (getLangOpts().hasCNullPtrType() && LHSType->isNullPtrType() &&
       RHS.get()->isNullPointerConstant(Context,
                                        Expr::NPC_ValueDependentIsNull)) {
     // null -> nullptr_t
@@ -10279,7 +10286,8 @@ AssignConvertType Sema::CheckSingleAssignmentConstraints(QualType LHSType,
   if ((LHSTypeAfterConversion->isPointerType() ||
        LHSTypeAfterConversion->isObjCObjectPointerType() ||
        LHSTypeAfterConversion->isBlockPointerType()) &&
-      ((getLangOpts().C23 && RHS.get()->getType()->isNullPtrType()) ||
+      ((getLangOpts().hasCNullPtrType() &&
+        RHS.get()->getType()->isNullPtrType()) ||
        RHS.get()->isNullPointerConstant(Context,
                                         Expr::NPC_ValueDependentIsNull))) {
     AssignConvertType Ret = AssignConvertType::Compatible;

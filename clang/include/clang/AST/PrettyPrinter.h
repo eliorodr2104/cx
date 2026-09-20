@@ -82,7 +82,8 @@ struct PrintingPolicy {
         SuppressStrongLifetime(false), SuppressLifetimeQualifiers(false),
         SuppressTemplateArgsInCXXConstructors(false),
         SuppressDefaultTemplateArgs(true), Bool(LO.Bool),
-        Nullptr(LO.CPlusPlus11 || LO.C23), NullptrTypeInNamespace(LO.CPlusPlus),
+        Nullptr(LO.CPlusPlus11 || LO.C23), CxInference(LO.CX),
+        NullptrTypeInNamespace(LO.CPlusPlus),
         Restrict(LO.C99), Alignof(LO.CPlusPlus11), UnderscoreAlignof(LO.C11),
         UseVoidForZeroParams(!LO.CPlusPlus),
         SplitTemplateClosers(!LO.CPlusPlus11), TerseOutput(false),
@@ -237,6 +238,11 @@ struct PrintingPolicy {
   /// constant.
   LLVM_PREFERRED_TYPE(bool)
   unsigned Nullptr : 1;
+
+  /// Whether a deduced placeholder type should be spelled with the Cx
+  /// inference specifier rather than '__auto_type'.
+  LLVM_PREFERRED_TYPE(bool)
+  unsigned CxInference : 1;
 
   /// Whether 'nullptr_t' is in namespace 'std' or not.
   LLVM_PREFERRED_TYPE(bool)

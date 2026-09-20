@@ -3781,6 +3781,24 @@ void Parser::ParseDeclarationSpecifiers(
       if (DS.hasTypeSpecifier())
         goto DoneWithDeclSpec;
 
+      // Cx: the contextual inference specifiers `var` and `let`. Both reuse
+      // the __auto_type deduction machinery, so each declarator deduces its
+      // own type; `let` additionally makes the binding itself const.
+      if (isCxInferenceSpecifier(Tok)) {
+        bool IsLet = Tok.getIdentifierInfo()->isStr("let");
+        isInvalid = DS.SetTypeSpecType(DeclSpec::TST_auto_type, Loc, PrevSpec,
+                                       DiagID, Policy);
+        DS.setCxInferred();
+        if (!isInvalid && IsLet)
+          isInvalid = DS.SetTypeQual(DeclSpec::TQ_const, Loc, PrevSpec, DiagID,
+                                     getLangOpts());
+        if (isInvalid)
+          break;
+        DS.SetRangeEnd(Tok.getLocation());
+        ConsumeToken();
+        continue;
+      }
+
       // If the token is an identifier named "__declspec" and Microsoft
       // extensions are not enabled, it is likely that there will be cascading
       // parse errors if this really is a __declspec attribute. Attempt to
@@ -5823,6 +5841,15 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelStmtDecl() {
   return Actions.BuildDeclaratorGroup(DeclsInGroup);
 }
 
+bool Parser::isCxInferenceSpecifier(const Token &Tok) {
+  if (!getLangOpts().CX || Tok.isNot(tok::identifier))
+    return false;
+  const IdentifierInfo *II = Tok.getIdentifierInfo();
+  if (!II->isStr("var") && !II->isStr("let"))
+    return false;
+  return Actions.isCxContextualKeyword(II, getCurScope());
+}
+
 bool Parser::isDeclarationSpecifier(
     ImplicitTypenameContext AllowImplicitTypename,
     bool DisambiguatingWithExpression) {
@@ -5838,6 +5865,8 @@ bool Parser::isDeclarationSpecifier(
     // Unfortunate hack to support "Class.factoryMethod" notation.
     if (getLangOpts().ObjC && NextToken().is(tok::period))
       return false;
+    if (isCxInferenceSpecifier(Tok))
+      return true;
     if (TryAltiVecVectorToken())
       return true;
     [[fallthrough]];

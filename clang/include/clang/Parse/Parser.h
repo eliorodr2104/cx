@@ -2062,6 +2062,10 @@ private:
   bool isDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
                               bool DisambiguatingWithExpression = false);
 
+  /// Whether \p Tok is the Cx contextual inference specifier `var` or `let`.
+  /// A visible C declaration with that name keeps its C interpretation.
+  bool isCxInferenceSpecifier(const Token &Tok);
+
   /// isTypeSpecifierQualifier - Return true if the current token could be the
   /// start of a specifier-qualifier-list.
   bool isTypeSpecifierQualifier(const Token &Tok);

@@ -4192,9 +4192,17 @@ public:
   DeclGroupPtrTy FinalizeDeclaratorGroup(Scope *S, const DeclSpec &DS,
                                          ArrayRef<Decl *> Group);
 
+  /// True when \p II has no visible ordinary-namespace declaration, so the Cx
+  /// contextual keyword spelled that way is available here. Always false
+  /// outside Cx mode. Defined in SemaCx.cpp.
+  bool isCxContextualKeyword(const IdentifierInfo *II, Scope *S);
+
   /// BuildDeclaratorGroup - convert a list of declarations into a declaration
   /// group, performing any necessary semantic checking.
-  DeclGroupPtrTy BuildDeclaratorGroup(MutableArrayRef<Decl *> Group);
+  /// \p AllowIndependentDeduction permits each declarator in the group to
+  /// deduce its own type, as Cx `var` / `let` do.
+  DeclGroupPtrTy BuildDeclaratorGroup(MutableArrayRef<Decl *> Group,
+                                      bool AllowIndependentDeduction = false);
 
   /// Should be called on all declarations that might have attached
   /// documentation comments.

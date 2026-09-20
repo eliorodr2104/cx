@@ -7,4 +7,5 @@ known limitations; benchmark checkpoint if relevant; and a runnable demonstratio
 
 A milestone without a record here is not started.
 
-- [M0 — Pinned baseline, driver mode, `-x cx`, language options](M0.md) — **fatto**
+- [M0 — Pinned baseline, driver mode, `-x cx`, language options](M0.md) — **Completed**
+- [M1 — `var`, `let`, contextual `null`](M1.md) — **Completed**

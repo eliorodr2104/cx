@@ -700,6 +700,11 @@ public:
   /// builtin because a -fno-builtin-* option has been specified?
   bool isNoBuiltinFunc(StringRef Name) const;
 
+  /// Whether nullptr_t values take part in pointer conversions, i.e. the C23
+  /// nullptr rules. Cx enables them in every supported C dialect because its
+  /// `null` literal reuses them.
+  bool hasCNullPtrType() const { return C23 || CX; }
+
   /// True if any ObjC types may have non-trivial lifetime qualifiers.
   bool allowsNonTrivialObjCLifetimeQualifiers() const {
     return ObjCAutoRefCount || ObjCWeak;

@@ -3425,7 +3425,10 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
         switch (Auto->getKeyword()) {
         case AutoTypeKeyword::Auto: Kind = 0; break;
         case AutoTypeKeyword::DecltypeAuto: Kind = 1; break;
-        case AutoTypeKeyword::GNUAutoType: Kind = 2; break;
+        case AutoTypeKeyword::GNUAutoType:
+          // Cx spells this specifier 'var' / 'let'.
+          Kind = SemaRef.getLangOpts().CX ? 4 : 2;
+          break;
         }
       } else {
         assert(isa<DeducedTemplateSpecializationType>(Deduced) &&

@@ -29,6 +29,7 @@ assistant suggestion has been approved by the user.
 | [abi](abi/README.md) | Materialized values, calls, symbols, errors, C bridges and artifacts |
 | [runtime](runtime/README.md) | Ownership, weak references, construction and cleanup |
 | [stdlib](stdlib/README.md) | Optional/Result, Span, text, collections and algorithms |
+| [dev](dev/README.md) | Local shell helpers for building and running the fork |
 
 `Compiler` intentionally keeps the capitalized folder name requested for the existing
 pack. Other directory names are lowercase. Internal links use that exact case.

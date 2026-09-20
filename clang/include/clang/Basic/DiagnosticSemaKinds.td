@@ -2667,7 +2667,7 @@ def err_auto_not_allowed : Error<
   "use of "
   "%select{class template|function template|variable template|alias template|"
   "template template parameter|concept|template}2 %3 requires template "
-  "arguments; argument deduction}0 not allowed "
+  "arguments; argument deduction|'var'}0 not allowed "
   "%select{in function prototype"
   "|in non-static struct member|in struct member"
   "|in non-static union member|in union member"

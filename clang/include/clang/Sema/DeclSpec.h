@@ -363,6 +363,10 @@ private:
   unsigned TypeSpecSat : 1;
   LLVM_PREFERRED_TYPE(bool)
   unsigned ConstrainedAuto : 1;
+  /// Written as the Cx `var` or `let` inference specifier rather than as a C
+  /// type specifier. Each declarator then deduces independently.
+  LLVM_PREFERRED_TYPE(bool)
+  unsigned CxInferred : 1;
 
   // type-qualifiers
   LLVM_PREFERRED_TYPE(TQ)
@@ -474,6 +478,7 @@ public:
         TypeSpecType(TST_unspecified), TypeAltiVecVector(false),
         TypeAltiVecPixel(false), TypeAltiVecBool(false), TypeSpecOwned(false),
         TypeSpecPipe(false), TypeSpecSat(false), ConstrainedAuto(false),
+        CxInferred(false),
         TypeQualifiers(TQ_unspecified),
         OB_state(static_cast<unsigned>(OverflowBehaviorState::Unspecified)),
         FS_inline_specified(false), FS_forceinline_specified(false),
@@ -488,6 +493,10 @@ public:
     return (TSCS)ThreadStorageClassSpec;
   }
   bool isExternInLinkageSpec() const { return SCS_extern_in_linkage_spec; }
+
+  /// Whether the type specifier was written as Cx `var` or `let`.
+  bool isCxInferred() const { return CxInferred; }
+  void setCxInferred() { CxInferred = true; }
   void setExternInLinkageSpec(bool Value) {
     SCS_extern_in_linkage_spec = Value;
   }
