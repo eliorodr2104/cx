@@ -16,6 +16,7 @@
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticIDs.h"
+#include "clang/Basic/CxModuleOwnership.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/LangOptions.h"
@@ -207,6 +208,9 @@ class Preprocessor {
   /// A BumpPtrAllocator object used to quickly allocate and release
   /// objects internal to the Preprocessor.
   llvm::BumpPtrAllocator BP;
+
+  /// Which Cx module owns each physical file. Empty outside Cx mode.
+  CxModuleOwnership CxModules;
 
   /// Identifiers for builtin macros and other builtins.
   IdentifierInfo *Ident__LINE__, *Ident__FILE__;   // __LINE__, __FILE__
@@ -1266,6 +1270,10 @@ public:
 
   IdentifierTable &getIdentifierTable() { return Identifiers; }
   const IdentifierTable &getIdentifierTable() const { return Identifiers; }
+
+  /// Which Cx module owns each physical file seen so far.
+  CxModuleOwnership &getCxModuleOwnership() { return CxModules; }
+  const CxModuleOwnership &getCxModuleOwnership() const { return CxModules; }
   SelectorTable &getSelectorTable() { return Selectors; }
   Builtin::Context &getBuiltinInfo() { return *BuiltinInfo; }
   llvm::BumpPtrAllocator &getPreprocessorAllocator() { return BP; }
@@ -1826,6 +1834,10 @@ public:
   void EnterModuleSuffixTokenStream(ArrayRef<Token> Toks);
   void HandleCXXImportDirective(Token Import);
   void HandleCXXModuleDirective(Token Module);
+
+  /// Handle the Cx `#module NAME` directive, which records the module that
+  /// owns the file the directive appears in.
+  void HandleCxModuleDirective(Token ModuleTok, SourceLocation HashLoc);
 
   /// Callback invoked when the lexer sees one of export, import or module token
   /// at the start of a line.

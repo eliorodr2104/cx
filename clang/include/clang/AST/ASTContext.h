@@ -27,6 +27,7 @@
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeOrdering.h"
+#include "clang/Basic/CxModuleOwnership.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/SourceLocation.h"
@@ -759,6 +760,10 @@ private:
   /// The associated SourceManager object.
   SourceManager &SourceMgr;
 
+  /// Cx per-file module ownership, owned by the Preprocessor. Null when no
+  /// preprocessor filled it in, e.g. for an AST loaded from a file.
+  const CxModuleOwnership *CxModules = nullptr;
+
   /// The language options used to create the AST associated with
   ///  this ASTContext object.
   LangOptions &LangOpts;
@@ -868,6 +873,16 @@ public:
 
   SourceManager& getSourceManager() { return SourceMgr; }
   const SourceManager& getSourceManager() const { return SourceMgr; }
+
+  /// Record where Cx per-file module ownership lives. Set once by Sema from
+  /// the Preprocessor, which is what fills it in.
+  void setCxModuleOwnership(const CxModuleOwnership *O) { CxModules = O; }
+
+  /// The Cx module that owns the file \p Loc appears in, or null when the
+  /// file has no owner. \p Loc is resolved through its expansion location, so
+  /// a declaration written by a macro belongs to the file that expanded it;
+  /// the exact macro-expansion policy is an open question (G09).
+  const IdentifierInfo *getCxModuleOwner(SourceLocation Loc) const;
 
   // Cleans up some of the data structures. This allows us to do cleanup
   // normally done in the destructor earlier. Renders much of the ASTContext

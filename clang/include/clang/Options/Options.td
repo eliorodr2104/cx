@@ -3797,6 +3797,11 @@ def fmodule_name_EQ : Joined<["-"], "fmodule-name=">, Group<f_Group>,
   MetaVarName<"<name>">,
   HelpText<"Specify the name of the module to build">,
   MarshallingInfoString<LangOpts<"ModuleName">>;
+def fcx_module_EQ : Joined<["-"], "fcx-module=">, Group<f_Group>,
+  Visibility<[ClangOption, CC1Option]>,
+  MetaVarName<"<name>">,
+  HelpText<"Assign the primary Cx source file to module <name>">,
+  MarshallingInfoString<LangOpts<"CxModuleName">>;
 def fmodule_implementation_of : Separate<["-"], "fmodule-implementation-of">,
   Visibility<[ClangOption, CC1Option, CLOption]>,
   Alias<fmodule_name_EQ>;

@@ -326,6 +326,11 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
       CurrentInstantiationScope(nullptr), NonInstantiationEntries(0),
       ArgPackSubstIndex(std::nullopt), SatisfactionCache(Context) {
   assert(pp.TUKind == TUKind);
+
+  // Cx per-file module ownership is recorded by the preprocessor; the AST
+  // resolves a declaration's owner from its location.
+  Context.setCxModuleOwnership(&pp.getCxModuleOwnership());
+
   TUScope = nullptr;
 
   LoadedExternalKnownNamespaces = false;

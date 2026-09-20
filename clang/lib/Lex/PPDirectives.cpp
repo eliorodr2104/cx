@@ -1456,6 +1456,10 @@ void Preprocessor::HandleDirective(Token &Result) {
     case tok::pp___preprocessed_module:
       if (Introducer.isModuleContextualKeyword())
         return HandleCXXModuleDirective(Result);
+      // Cx spells file ownership '#module NAME'. This is not the C++ module
+      // declaration and does not enter a module context.
+      if (Introducer.is(tok::hash) && getLangOpts().CX)
+        return HandleCxModuleDirective(Result, Introducer.getLocation());
       break;
     case tok::pp___preprocessed_import:
       return HandleCXXImportDirective(Result);
@@ -4332,6 +4336,45 @@ void Preprocessor::HandleCXXImportDirective(Token ImportTok) {
   }
 
   EnterModuleSuffixTokenStream(DirToks);
+}
+
+/// HandleCxModuleDirective - Handle the Cx '#module NAME' directive.
+///
+/// The directive records which module owns the physical file it appears in.
+/// It is not a macro definition, it does not enter a module context, and it
+/// never applies to a file this one includes: ownership is per file.
+void Preprocessor::HandleCxModuleDirective(Token ModuleTok,
+                                           SourceLocation HashLoc) {
+  Token NameTok;
+  LexUnexpandedToken(NameTok);
+  IdentifierInfo *Name = NameTok.getIdentifierInfo();
+  if (!Name) {
+    Diag(NameTok.is(tok::eod) ? ModuleTok : NameTok,
+         diag::err_cx_module_expected_name);
+    if (NameTok.isNot(tok::eod))
+      DiscardUntilEndOfDirective();
+    return;
+  }
+
+  CheckEndOfDirective("module");
+
+  FileID FID = SourceMgr.getFileID(HashLoc);
+  CxModuleOwnership::Owner Existing = CxModules.getOwner(FID);
+  if (Existing) {
+    // A build assignment and a source directive must agree; two source
+    // directives in one file are a repeat whether or not they match.
+    if (Existing.FromBuild) {
+      if (Existing.Name != Name)
+        Diag(NameTok, diag::err_cx_module_build_mismatch)
+            << Name << Existing.Name;
+    } else {
+      Diag(NameTok, diag::err_cx_module_repeated);
+      Diag(Existing.DirectiveLoc, diag::note_cx_module_previous);
+    }
+    return;
+  }
+
+  CxModules.setOwner(FID, {Name, ModuleTok.getLocation(), /*FromBuild=*/false});
 }
 
 /// HandleCXXModuleDirective - Handle C++ module declaration directives.

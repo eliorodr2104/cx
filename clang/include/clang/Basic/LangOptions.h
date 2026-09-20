@@ -527,6 +527,11 @@ public:
   /// The module currently being compiled as specified by -fmodule-name.
   std::string ModuleName;
 
+  /// The Cx module the build assigns to the primary source file, as specified
+  /// by -fcx-module=. An included header never inherits it; a header states
+  /// its own owner with `#module`.
+  std::string CxModuleName;
+
   /// The name of the current module, of which the main source file
   /// is a part. If CompilingModule is set, we are compiling the interface
   /// of this module, otherwise we are compiling an implementation file of

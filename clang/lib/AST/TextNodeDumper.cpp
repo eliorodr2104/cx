@@ -285,6 +285,9 @@ void TextNodeDumper::Visit(const Decl *D) {
     OS << " imported";
   if (Module *M = D->getOwningModule())
     OS << " in " << M->getFullModuleName();
+  if (const IdentifierInfo *CxM =
+          D->getASTContext().getCxModuleOwner(D->getLocation()))
+    OS << " cx-module " << CxM->getName();
   if (auto *ND = dyn_cast<NamedDecl>(D))
     for (Module *M : D->getASTContext().getModulesWithMergedDefinition(
              const_cast<NamedDecl *>(ND)))

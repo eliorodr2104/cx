@@ -6879,6 +6879,13 @@ ASTContext::getUnaryTransformType(QualType BaseType, QualType UnderlyingType,
   return QualType(UT, 0);
 }
 
+const IdentifierInfo *ASTContext::getCxModuleOwner(SourceLocation Loc) const {
+  if (!CxModules || Loc.isInvalid())
+    return nullptr;
+  FileID FID = SourceMgr.getFileID(SourceMgr.getExpansionLoc(Loc));
+  return CxModules->getOwner(FID).Name;
+}
+
 /// getAutoType - Return the uniqued reference to the 'auto' type which has been
 /// deduced to the given type, or to the canonical undeduced 'auto' type, or the
 /// canonical deduced-but-dependent 'auto' type.

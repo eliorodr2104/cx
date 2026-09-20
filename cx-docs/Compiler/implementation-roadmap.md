@@ -17,7 +17,7 @@ they cannot honestly be called finished before those facilities exist.
 | M0 | Pinned baseline, driver mode, `-x cx`, language options | Pure C behavior, driver/PCH tests, actual SHA recorded | **Completed** ([record](milestones/M0.md)) |
 | M1 | `var`, `let`, contextual `null` | Keep semicolons initially; independent deduction and const tests | **Completed** ([record](milestones/M1.md)) |
 | M1.1 | Separate `auto`, `__auto_type`, `var` and `let` in the AST | Four distinct placeholder spellings; no C behavior change | **Completed** ([record](milestones/M1.1.md)) |
-| M2 | Module ownership and source identity skeleton | Preserve imported C declarations and unowned headers | |
+| M2 | Module ownership and source identity skeleton | Preserve imported C declarations and unowned headers | **Completed** ([record](milestones/M2.md)) |
 | M3 | Labels, overload lookup, compound references | Minimal deterministic experimental mangling and C-linkage checks | |
 | M4 | Struct methods, `self`, access, continuations, `~mutating` | No stored layout change; trivial generated construction | |
 | M5 | Semicolon elision and core syntax disambiguation | G01 rules and regression corpus before broad enablement | |

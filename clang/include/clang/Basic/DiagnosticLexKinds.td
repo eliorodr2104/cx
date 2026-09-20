@@ -557,6 +557,18 @@ def err_pp_invalid_directive : Error<
   "invalid preprocessing directive%select{|, did you mean '#%1'?}0">;
 def warn_pp_invalid_directive : Warning<
   err_pp_invalid_directive.Summary>, InGroup<DiagGroup<"unknown-directives">>;
+def err_cx_module_expected_name : Error<
+  "expected a module name after '#module'">;
+def err_cx_module_repeated : Error<
+  "this file already declares a module owner">;
+def note_cx_module_previous : Note<
+  "previous module declaration is here">;
+def err_cx_module_build_mismatch : Error<
+  "module %0 declared here conflicts with module %1 assigned to this file "
+  "by the build">;
+def err_cx_module_not_in_cx : Error<
+  "'#module' is only available in Cx mode">;
+
 def err_pp_unknown_parameter : Error<
   "unknown%select{ | embed}0 preprocessor parameter '%1'">;
 def err_pp_directive_required : Error<

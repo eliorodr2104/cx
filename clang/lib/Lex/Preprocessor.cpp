@@ -606,6 +606,13 @@ void Preprocessor::EnterMainSourceFile() {
     if (OptionalFileEntryRef FE = SourceMgr.getFileEntryRefForID(MainFileID))
       markIncluded(*FE);
 
+    // A build-assigned Cx module applies to the primary source file only.
+    // Headers it includes state their own owner, or have none.
+    if (getLangOpts().CX && !getLangOpts().CxModuleName.empty())
+      CxModules.setOwner(MainFileID,
+                         {getIdentifierInfo(getLangOpts().CxModuleName),
+                          SourceLocation(), /*FromBuild=*/true});
+
     // Record the first PP token in the main file. This is used to generate
     // better diagnostics for C++ modules.
     //
