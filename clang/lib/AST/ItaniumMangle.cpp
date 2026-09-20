@@ -4593,8 +4593,8 @@ void CXXNameMangler::mangleType(const UnaryTransformType *T) {
 void CXXNameMangler::mangleType(const AutoType *T) {
   assert(T->getDeducedType().isNull() &&
          "Deduced AutoType shouldn't be handled here!");
-  assert(T->getKeyword() != AutoTypeKeyword::GNUAutoType &&
-         "shouldn't need to mangle __auto_type!");
+  assert(!T->isDeducedFromInitializerOnly() &&
+         "shouldn't need to mangle __auto_type or a Cx inference specifier!");
   // <builtin-type> ::= Da # auto
   //                ::= Dc # decltype(auto)
   //                ::= Dk # constrained auto

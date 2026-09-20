@@ -25,6 +25,12 @@ explicit Cx literal proposal says otherwise. Examples do not assume `10d` or `10
 
 A visible C typedef or macro named `var` retains its C interpretation.
 
+`var` and `let` are separate declarations, not new spellings of C `auto` or the
+GNU `__auto_type` extension. Both of those keep their selected-dialect meaning
+inside Cx mode, including the C rule that one `__auto_type` declaration cannot
+deduce two different types. A Cx rule never reaches a C placeholder, and the
+compiler reports each of the four specifiers under the name that was written.
+
 ## `let`: inference plus top-level const
 
 ```c

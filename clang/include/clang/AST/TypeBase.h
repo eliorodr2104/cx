@@ -1839,7 +1839,15 @@ enum class AutoTypeKeyword {
   DecltypeAuto,
 
   /// __auto_type (GNU extension)
-  GNUAutoType
+  GNUAutoType,
+
+  /// Cx 'var': inference from the initializer, mutable binding.
+  CxVar,
+
+  /// Cx 'let': inference from the initializer, plus top-level const on the
+  /// binding. Distinct from 'var' because the two are different declarations,
+  /// and distinct from 'auto' because neither follows the C++ auto rules.
+  CxLet
 };
 
 enum class ArraySizeModifier;
@@ -2165,9 +2173,9 @@ protected:
     unsigned : NumDeducedTypeBits;
 
     /// Was this placeholder type spelled as 'auto', 'decltype(auto)',
-    /// or '__auto_type'?  AutoTypeKeyword value.
+    /// '__auto_type', Cx 'var' or Cx 'let'?  AutoTypeKeyword value.
     LLVM_PREFERRED_TYPE(AutoTypeKeyword)
-    unsigned Keyword : 2;
+    unsigned Keyword : 3;
 
     /// The number of template arguments in the type-constraints, which is
     /// expected to be able to hold at least 1024 according to [implimits].
@@ -7350,6 +7358,19 @@ public:
 
   bool isGNUAutoType() const {
     return getKeyword() == AutoTypeKeyword::GNUAutoType;
+  }
+
+  bool isCxVar() const { return getKeyword() == AutoTypeKeyword::CxVar; }
+
+  bool isCxLet() const { return getKeyword() == AutoTypeKeyword::CxLet; }
+
+  /// Was this spelled with a Cx inference specifier?
+  bool isCxInference() const { return isCxVar() || isCxLet(); }
+
+  /// Whether this placeholder is deduced from its initializer alone, with no
+  /// C++ 'auto' rules: '__auto_type' and the Cx inference specifiers.
+  bool isDeducedFromInitializerOnly() const {
+    return isGNUAutoType() || isCxInference();
   }
 
   AutoTypeKeyword getKeyword() const {

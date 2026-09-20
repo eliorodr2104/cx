@@ -3162,8 +3162,8 @@ void MicrosoftCXXNameMangler::mangleFunctionType(const FunctionType *T,
       mangleType(ResultType, Range, QMM_Result);
     } else if (IsInLambda) {
       if (const auto *AT = ResultType->getContainedAutoType()) {
-        assert(AT->getKeyword() != AutoTypeKeyword::GNUAutoType &&
-               "shouldn't need to mangle __auto_type!");
+        assert(!AT->isDeducedFromInitializerOnly() &&
+               "shouldn't need to mangle __auto_type or a Cx specifier!");
         Out << '?';
         mangleQualifiers(ResultType.getLocalQualifiers(), /*IsMember=*/false);
         Out << '?';
@@ -3173,8 +3173,8 @@ void MicrosoftCXXNameMangler::mangleFunctionType(const FunctionType *T,
         Out << '@';
       }
     } else if (const auto *AT = ResultType->getContainedAutoType()) {
-      assert(AT->getKeyword() != AutoTypeKeyword::GNUAutoType &&
-             "shouldn't need to mangle __auto_type!");
+      assert(!AT->isDeducedFromInitializerOnly() &&
+             "shouldn't need to mangle __auto_type or a Cx specifier!");
 
       // If we have any pointer types with the clang address space extension
       // then defer to the custom clang mangling to keep backwards

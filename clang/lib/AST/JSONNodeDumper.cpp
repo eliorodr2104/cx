@@ -819,6 +819,12 @@ void JSONNodeDumper::VisitAutoType(const AutoType *AT) {
   case AutoTypeKeyword::GNUAutoType:
     JOS.attribute("typeKeyword", "__auto_type");
     break;
+  case AutoTypeKeyword::CxVar:
+    JOS.attribute("typeKeyword", "var");
+    break;
+  case AutoTypeKeyword::CxLet:
+    JOS.attribute("typeKeyword", "let");
+    break;
   }
 }
 

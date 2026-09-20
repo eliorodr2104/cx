@@ -3788,7 +3788,8 @@ void Parser::ParseDeclarationSpecifiers(
         bool IsLet = Tok.getIdentifierInfo()->isStr("let");
         isInvalid = DS.SetTypeSpecType(DeclSpec::TST_auto_type, Loc, PrevSpec,
                                        DiagID, Policy);
-        DS.setCxInferred();
+        DS.setCxInferenceKind(IsLet ? DeclSpec::CxInf_let
+                                    : DeclSpec::CxInf_var);
         if (!isInvalid && IsLet)
           isInvalid = DS.SetTypeQual(DeclSpec::TQ_const, Loc, PrevSpec, DiagID,
                                      getLangOpts());

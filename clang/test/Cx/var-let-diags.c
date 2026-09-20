@@ -6,7 +6,16 @@
 int value = 10;
 
 var missing; // expected-error {{declaration of variable 'missing' with deduced type 'var' requires an initializer}}
-let unbound; // expected-error {{declaration of variable 'unbound' with deduced type 'const var' requires an initializer}}
+let unbound; // expected-error {{declaration of variable 'unbound' with deduced type 'let' requires an initializer}}
+
+// `auto`, `__auto_type`, `var` and `let` stay four distinct spellings.
+int cx_var_param(var x);          // expected-error {{'var' not allowed in function prototype}}
+int cx_let_param(let y);          // expected-error {{'let' not allowed in function prototype}}
+int gnu_param(__auto_type z);     // expected-error {{'__auto_type' not allowed in function prototype}}
+
+// Only a Cx group deduces independently; __auto_type keeps its C rule.
+__auto_type shared = 1, // expected-error {{'__auto_type' deduced as 'int' in declaration of 'shared' and deduced as 'double' in declaration of 'mismatch'}}
+            mismatch = 2.0;
 
 void immutable_bindings(void) {
   let bound = &value; // expected-note {{variable 'bound' declared const here}}

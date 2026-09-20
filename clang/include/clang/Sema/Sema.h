@@ -4199,10 +4199,7 @@ public:
 
   /// BuildDeclaratorGroup - convert a list of declarations into a declaration
   /// group, performing any necessary semantic checking.
-  /// \p AllowIndependentDeduction permits each declarator in the group to
-  /// deduce its own type, as Cx `var` / `let` do.
-  DeclGroupPtrTy BuildDeclaratorGroup(MutableArrayRef<Decl *> Group,
-                                      bool AllowIndependentDeduction = false);
+  DeclGroupPtrTy BuildDeclaratorGroup(MutableArrayRef<Decl *> Group);
 
   /// Should be called on all declarations that might have attached
   /// documentation comments.

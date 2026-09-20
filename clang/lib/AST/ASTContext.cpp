@@ -12009,14 +12009,14 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS, bool OfBlockPointer,
       if (RHS->isObjCIdType() && LHS->isBlockPointerType())
         return RHS;
     }
-    // Allow __auto_type to match anything; it merges to the type with more
-    // information.
+    // Allow __auto_type and the Cx inference specifiers to match anything;
+    // they merge to the type with more information.
     if (const auto *AT = LHS->getAs<AutoType>()) {
-      if (!AT->isDeduced() && AT->isGNUAutoType())
+      if (!AT->isDeduced() && AT->isDeducedFromInitializerOnly())
         return RHS;
     }
     if (const auto *AT = RHS->getAs<AutoType>()) {
-      if (!AT->isDeduced() && AT->isGNUAutoType())
+      if (!AT->isDeduced() && AT->isDeducedFromInitializerOnly())
         return LHS;
     }
     return {};

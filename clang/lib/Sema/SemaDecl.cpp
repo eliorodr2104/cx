@@ -15567,18 +15567,15 @@ Sema::DeclGroupPtrTy Sema::FinalizeDeclaratorGroup(Scope *S, const DeclSpec &DS,
     }
   }
 
-  return BuildDeclaratorGroup(Decls, DS.isCxInferred());
+  return BuildDeclaratorGroup(Decls);
 }
 
 Sema::DeclGroupPtrTy
-Sema::BuildDeclaratorGroup(MutableArrayRef<Decl *> Group,
-                           bool AllowIndependentDeduction) {
+Sema::BuildDeclaratorGroup(MutableArrayRef<Decl *> Group) {
   // C++14 [dcl.spec.auto]p7: (DR1347)
   //   If the type that replaces the placeholder type is not the same in each
   //   deduction, the program is ill-formed.
-  //
-  // Cx `var` / `let` deduce each declarator independently instead.
-  if (Group.size() > 1 && !AllowIndependentDeduction) {
+  if (Group.size() > 1) {
     QualType Deduced;
     VarDecl *DeducedDecl = nullptr;
     for (unsigned i = 0, e = Group.size(); i != e; ++i) {
@@ -15588,6 +15585,9 @@ Sema::BuildDeclaratorGroup(MutableArrayRef<Decl *> Group,
       DeducedType *DT = D->getType()->getContainedDeducedType();
       if (!DT || DT->getDeducedType().isNull())
         continue;
+      // A Cx `var` / `let` group deduces each declarator independently.
+      if (auto *AT = dyn_cast<AutoType>(DT); AT && AT->isCxInference())
+        break;
       if (Deduced.isNull()) {
         Deduced = DT->getDeducedType();
         DeducedDecl = D;

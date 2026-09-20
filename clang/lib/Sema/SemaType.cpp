@@ -1349,10 +1349,23 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
   }
 
-  case DeclSpec::TST_auto_type:
-    Result = Context.getAutoType(DeducedKind::Undeduced, QualType(),
-                                 AutoTypeKeyword::GNUAutoType);
+  case DeclSpec::TST_auto_type: {
+    // Cx spells the same deduction 'var' and 'let'. Keep the three apart in
+    // the AST: they are different declarations, and neither is C++ 'auto'.
+    AutoTypeKeyword AutoKW = AutoTypeKeyword::GNUAutoType;
+    switch (DS.getCxInferenceKind()) {
+    case DeclSpec::CxInf_none:
+      break;
+    case DeclSpec::CxInf_var:
+      AutoKW = AutoTypeKeyword::CxVar;
+      break;
+    case DeclSpec::CxInf_let:
+      AutoKW = AutoTypeKeyword::CxLet;
+      break;
+    }
+    Result = Context.getAutoType(DeducedKind::Undeduced, QualType(), AutoKW);
     break;
+  }
 
   case DeclSpec::TST_unknown_anytype:
     Result = Context.UnknownAnyTy;
@@ -3247,10 +3260,9 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     AutoType *Auto = dyn_cast<AutoType>(Deduced);
     int Error = -1;
 
-    // Is this a 'auto' or 'decltype(auto)' type (as opposed to __auto_type or
-    // class template argument deduction)?
-    bool IsCXXAutoType =
-        (Auto && Auto->getKeyword() != AutoTypeKeyword::GNUAutoType);
+    // Is this a 'auto' or 'decltype(auto)' type (as opposed to __auto_type,
+    // a Cx inference specifier, or class template argument deduction)?
+    bool IsCXXAutoType = (Auto && !Auto->isDeducedFromInitializerOnly());
     bool IsDeducedReturnType = false;
 
     SourceRange AutoRange = D.getDeclSpec().getTypeSpecTypeLoc();
@@ -3425,10 +3437,9 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
         switch (Auto->getKeyword()) {
         case AutoTypeKeyword::Auto: Kind = 0; break;
         case AutoTypeKeyword::DecltypeAuto: Kind = 1; break;
-        case AutoTypeKeyword::GNUAutoType:
-          // Cx spells this specifier 'var' / 'let'.
-          Kind = SemaRef.getLangOpts().CX ? 4 : 2;
-          break;
+        case AutoTypeKeyword::GNUAutoType: Kind = 2; break;
+        case AutoTypeKeyword::CxVar: Kind = 4; break;
+        case AutoTypeKeyword::CxLet: Kind = 5; break;
         }
       } else {
         assert(isa<DeducedTemplateSpecializationType>(Deduced) &&

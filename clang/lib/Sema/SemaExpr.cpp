@@ -9703,10 +9703,10 @@ AssignConvertType Sema::CheckAssignmentConstraints(QualType LHSType,
     return AssignConvertType::Compatible;
   }
 
-  // If the LHS has an __auto_type, there are no additional type constraints
-  // to be worried about.
+  // If the LHS has an __auto_type or a Cx inference specifier, there are no
+  // additional type constraints to be worried about.
   if (const auto *AT = dyn_cast<AutoType>(LHSType)) {
-    if (AT->isGNUAutoType()) {
+    if (AT->isDeducedFromInitializerOnly()) {
       Kind = CK_NoOp;
       return AssignConvertType::Compatible;
     }

@@ -326,6 +326,12 @@ void TypePrinter::printBefore(const Type *T,Qualifiers Quals, raw_ostream &OS) {
   if (Policy.SuppressSpecifiers && T->isSpecifierType())
     return;
 
+  // A Cx 'let' placeholder already carries the const it introduces; printing
+  // an undeduced one as "const let" would just repeat the specifier.
+  if (const auto *AT = dyn_cast<AutoType>(T))
+    if (AT->isCxLet() && AT->getDeducedType().isNull())
+      Quals.removeConst();
+
   SaveAndRestore PrevPHIsEmpty(HasEmptyPlaceHolder);
 
   // Print qualifiers as appropriate.
@@ -1425,9 +1431,9 @@ void TypePrinter::printAutoBefore(const AutoType *T, raw_ostream &OS) {
     switch (T->getKeyword()) {
     case AutoTypeKeyword::Auto: OS << "auto"; break;
     case AutoTypeKeyword::DecltypeAuto: OS << "decltype(auto)"; break;
-    case AutoTypeKeyword::GNUAutoType:
-      OS << (Policy.CxInference ? "var" : "__auto_type");
-      break;
+    case AutoTypeKeyword::GNUAutoType: OS << "__auto_type"; break;
+    case AutoTypeKeyword::CxVar: OS << "var"; break;
+    case AutoTypeKeyword::CxLet: OS << "let"; break;
     }
     spaceBeforePlaceHolder(OS);
   }

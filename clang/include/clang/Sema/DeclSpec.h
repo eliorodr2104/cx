@@ -312,6 +312,15 @@ public:
     TQ_atomic      = 16
   };
 
+  /// Which Cx inference specifier a TST_auto_type specifier was written as.
+  /// Cx `var` and `let` are separate declarations from each other and from C
+  /// `auto`, so the spelling is kept rather than folded into one placeholder.
+  enum CxInferenceKind {
+    CxInf_none = 0,
+    CxInf_var  = 1,
+    CxInf_let  = 2
+  };
+
   /// ParsedSpecifiers - Flags to query which specifiers were applied.  This is
   /// returned by getParsedSpecifiers.
   enum ParsedSpecifiers {
@@ -363,10 +372,9 @@ private:
   unsigned TypeSpecSat : 1;
   LLVM_PREFERRED_TYPE(bool)
   unsigned ConstrainedAuto : 1;
-  /// Written as the Cx `var` or `let` inference specifier rather than as a C
-  /// type specifier. Each declarator then deduces independently.
-  LLVM_PREFERRED_TYPE(bool)
-  unsigned CxInferred : 1;
+  /// Which Cx inference specifier the type specifier was written as, if any.
+  /// CxInferenceKind value.
+  unsigned CxInference : 2;
 
   // type-qualifiers
   LLVM_PREFERRED_TYPE(TQ)
@@ -478,7 +486,7 @@ public:
         TypeSpecType(TST_unspecified), TypeAltiVecVector(false),
         TypeAltiVecPixel(false), TypeAltiVecBool(false), TypeSpecOwned(false),
         TypeSpecPipe(false), TypeSpecSat(false), ConstrainedAuto(false),
-        CxInferred(false),
+        CxInference(CxInf_none),
         TypeQualifiers(TQ_unspecified),
         OB_state(static_cast<unsigned>(OverflowBehaviorState::Unspecified)),
         FS_inline_specified(false), FS_forceinline_specified(false),
@@ -494,9 +502,11 @@ public:
   }
   bool isExternInLinkageSpec() const { return SCS_extern_in_linkage_spec; }
 
-  /// Whether the type specifier was written as Cx `var` or `let`.
-  bool isCxInferred() const { return CxInferred; }
-  void setCxInferred() { CxInferred = true; }
+  /// Which Cx inference specifier, if any, the type specifier was written as.
+  CxInferenceKind getCxInferenceKind() const {
+    return (CxInferenceKind)CxInference;
+  }
+  void setCxInferenceKind(CxInferenceKind K) { CxInference = K; }
   void setExternInLinkageSpec(bool Value) {
     SCS_extern_in_linkage_spec = Value;
   }
