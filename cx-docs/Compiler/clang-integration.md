@@ -6,6 +6,12 @@ Before patching, record the actual checkout SHA and build configuration. Documen
 names below are architectural targets; confirm current APIs in that checkout rather
 than assuming an online latest branch exactly matches it.
 
+The pinned baseline is upstream `llvm/llvm-project` `release/23.x` at
+`6dfe1677ab8dffbc6ec13d53a1e0215d75147689` (2026-09-07), built with Ninja,
+`RelWithDebInfo`, assertions on, `LLVM_TARGETS_TO_BUILD=AArch64`, default triple
+`arm64-apple-darwin27.0.0`. Full details and the verification run are in the
+[M0 record](milestones/M0.md).
+
 ## Driver and frontend state
 
 Extend the existing driver to recognize the Cx invocation and explicit Cx input.

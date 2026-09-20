@@ -146,6 +146,8 @@ bool types::isAcceptedByClang(ID Id) {
 
   case TY_Asm:
   case TY_C: case TY_PP_C:
+  case TY_CX: case TY_PP_CX:
+  case TY_CXHeader: case TY_PP_CXHeader:
   case TY_CL: case TY_PP_CL: case TY_CLCXX: case TY_PP_CLCXX:
   case TY_CUDA: case TY_PP_CUDA:
   case TY_CUDA_DEVICE:
@@ -199,6 +201,10 @@ bool types::isDerivedFromC(ID Id) {
 
   case TY_PP_C:
   case TY_C:
+  case TY_CX:
+  case TY_PP_CX:
+  case TY_CXHeader:
+  case TY_PP_CXHeader:
   case TY_CL:
   case TY_PP_CL:
   case TY_CLCXX:
@@ -448,6 +454,22 @@ ID types::lookupCXXTypeForCType(ID Id) {
   }
 }
 
+ID types::lookupCxTypeForCType(ID Id) {
+  switch (Id) {
+  default:
+    return Id;
+
+  case types::TY_C:
+    return types::TY_CX;
+  case types::TY_PP_C:
+    return types::TY_PP_CX;
+  case types::TY_CHeader:
+    return types::TY_CXHeader;
+  case types::TY_PP_CHeader:
+    return types::TY_PP_CXHeader;
+  }
+}
+
 ID types::lookupHeaderTypeForSourceType(ID Id) {
   switch (Id) {
   default:
@@ -456,6 +478,8 @@ ID types::lookupHeaderTypeForSourceType(ID Id) {
   // FIXME: Handle preprocessed input types.
   case types::TY_C:
     return types::TY_CHeader;
+  case types::TY_CX:
+    return types::TY_CXHeader;
   case types::TY_CXX:
   case types::TY_CXXModule:
   case types::TY_CXXStdModule:

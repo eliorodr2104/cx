@@ -123,6 +123,11 @@ namespace types {
   /// C type (used for clang++ emulation of g++ behaviour)
   ID lookupCXXTypeForCType(ID Id);
 
+  /// lookupCxTypeForCType - Lookup the Cx input type that corresponds to the
+  /// given C type (used by the clangx driver mode). Non-C inputs such as
+  /// objects, archives and assembly are returned unchanged.
+  ID lookupCxTypeForCType(ID Id);
+
   /// Lookup header file input type that corresponds to given
   /// source file type (used for clang-cl emulation of \Yc).
   ID lookupHeaderTypeForSourceType(ID Id);

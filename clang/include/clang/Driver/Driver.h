@@ -103,7 +103,8 @@ class Driver {
     CPPMode,
     CLMode,
     FlangMode,
-    DXCMode
+    DXCMode,
+    CXMode
   } Mode;
 
   enum SaveTempsMode {
@@ -236,6 +237,10 @@ public:
 
   /// Whether the driver should follow dxc.exe like behavior.
   bool IsDXCMode() const { return Mode == DXCMode; }
+
+  /// Whether the driver should invoke the Cx compiler (clangx). In this mode
+  /// ordinary C source and header inputs default to Cx; an explicit -x wins.
+  bool CCCIsCX() const { return Mode == CXMode; }
 
   /// Only print tool bindings, don't build any jobs.
   LLVM_PREFERRED_TYPE(bool)

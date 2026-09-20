@@ -208,6 +208,7 @@ StringRef getLanguageName(Language Lang) {
     return "objective-c++";
 
   // Unsupported language currently
+  case Language::Cx:
   case Language::OpenCL:
   case Language::OpenCLCXX:
   case Language::CUDA:

@@ -134,6 +134,8 @@ void LangOptions::setLangDefaults(LangOptions &Opts, Language Lang,
   Opts.AllowLiteralDigitSeparator = Std.allowLiteralDigitSeparator();
   Opts.NamedLoops = Std.isC2y();
 
+  Opts.CX = Lang == Language::Cx;
+
   Opts.HLSL = Lang == Language::HLSL;
   if (Opts.HLSL) {
     if (Opts.IncludeDefaultHeader)

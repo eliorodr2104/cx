@@ -2983,6 +2983,9 @@ static void GenerateFrontendArgs(const FrontendOptions &Opts,
     case Language::C:
       Lang = "c";
       break;
+    case Language::Cx:
+      Lang = "cx";
+      break;
     case Language::OpenCL:
       Lang = "cl";
       break;
@@ -3226,6 +3229,7 @@ static bool ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     // Principal languages.
     DashX = llvm::StringSwitch<InputKind>(XValue)
                 .Case("c", Language::C)
+                .Case("cx", Language::Cx)
                 .Case("cl", Language::OpenCL)
                 .Case("clcpp", Language::OpenCLCXX)
                 .Case("cuda", Language::CUDA)
@@ -3654,6 +3658,7 @@ static bool IsInputCompatibleWithStandard(InputKind IK,
     llvm_unreachable("should not parse language flags for this input");
 
   case Language::C:
+  case Language::Cx:
   case Language::ObjC:
     return S.getLanguage() == Language::C;
 
@@ -3694,6 +3699,8 @@ static StringRef GetInputKindName(InputKind IK) {
   switch (IK.getLanguage()) {
   case Language::C:
     return "C";
+  case Language::Cx:
+    return "Cx";
   case Language::ObjC:
     return "Objective-C";
   case Language::CXX:

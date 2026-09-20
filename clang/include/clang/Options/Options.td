@@ -684,7 +684,7 @@ class InternalDriverOpt : Group<internal_driver_Group>,
 def driver_mode : Joined<["--"], "driver-mode=">, Group<internal_driver_Group>,
   Flags<[NoXarchOption, HelpHidden]>,
   Visibility<[ClangOption, FlangOption, CLOption, DXCOption]>,
-  HelpText<"Set the driver mode to either 'gcc', 'g++', 'cpp', 'cl' or 'flang'">;
+  HelpText<"Set the driver mode to either 'gcc', 'g++', 'cpp', 'cl', 'flang' or 'cx'">;
 def rsp_quoting : Joined<["--"], "rsp-quoting=">, Group<internal_driver_Group>,
   Flags<[NoXarchOption, HelpHidden]>,
   Visibility<[ClangOption, CLOption, DXCOption]>,

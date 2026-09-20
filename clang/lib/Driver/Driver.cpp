@@ -236,6 +236,7 @@ void Driver::setDriverMode(StringRef Value) {
                    .Case("cl", CLMode)
                    .Case("flang", FlangMode)
                    .Case("dxc", DXCMode)
+                   .Case("cx", CXMode)
                    .Default(std::nullopt))
     Mode = *M;
   else
@@ -3201,6 +3202,12 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
               Diag(clang::diag::warn_drv_treating_input_as_cxx)
                   << getTypeName(OldTy) << getTypeName(Ty);
           }
+
+          // If the driver is invoked as the Cx compiler (clangx), ordinary C
+          // sources and headers default to Cx. Objects, archives, assembly and
+          // every other input kind are left alone.
+          if (CCCIsCX())
+            Ty = types::lookupCxTypeForCType(Ty);
 
           // If running with -fthinlto-index=, extensions that normally identify
           // native object files actually identify LLVM bitcode files.
@@ -7452,6 +7459,8 @@ const char *Driver::getExecutableForDriverMode(DriverMode Mode) {
     return "flang";
   case DXCMode:
     return "clang-dxc";
+  case CXMode:
+    return "clangx";
   }
 
   llvm_unreachable("Unhandled Mode");

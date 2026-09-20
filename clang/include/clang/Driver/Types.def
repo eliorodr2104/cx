@@ -57,10 +57,17 @@ TYPE("objc++-cpp-output",        PP_ObjCXX_Alias, INVALID,      "mii",    phases
 TYPE("objective-c++",            ObjCXX,       PP_ObjCXX,       "mm",     phases::Preprocess, phases::Compile, phases::Backend, phases::Assemble, phases::Link)
 TYPE("hlsl",                     HLSL,         PP_CXX,          "hlsl",   phases::Preprocess, phases::Compile, phases::Backend, phases::Assemble)
 
+// Cx: the selected C dialect plus Cx capability. Deliberately not a new
+// C standard matrix (see cx-docs/Compiler/language-mode.md).
+TYPE("cx-cpp-output",            PP_CX,        INVALID,         "i",      phases::Compile, phases::Backend, phases::Assemble, phases::Link)
+TYPE("cx",                       CX,           PP_CX,           "c",      phases::Preprocess, phases::Compile, phases::Backend, phases::Assemble, phases::Link)
+
 // C family input files to precompile.
 TYPE("c-header-cpp-output",      PP_CHeader,   INVALID,         "i",      phases::Precompile)
 TYPE("c-header",                 CHeader,      PP_CHeader,      "h",      phases::Preprocess, phases::Precompile)
 TYPE("cl-header",                CLHeader,     PP_CHeader,      "h",      phases::Preprocess, phases::Precompile)
+TYPE("cx-header-cpp-output",     PP_CXHeader,  INVALID,         "i",      phases::Precompile)
+TYPE("cx-header",                CXHeader,     PP_CXHeader,     "h",      phases::Preprocess, phases::Precompile)
 TYPE("objective-c-header-cpp-output", PP_ObjCHeader, INVALID,   "mi",     phases::Precompile)
 TYPE("objective-c-header",       ObjCHeader,   PP_ObjCHeader,   "h",      phases::Preprocess, phases::Precompile)
 TYPE("c++-header-cpp-output",    PP_CXXHeader, INVALID,         "ii",     phases::Precompile)

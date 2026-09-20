@@ -33,6 +33,9 @@ enum class Language : uint8_t {
 
   ///@{ Languages that the frontend can parse and compile.
   C,
+  /// Cx: the selected C dialect plus Cx capability. Cx deliberately has no
+  /// standard matrix of its own; -std= still selects a C standard.
+  Cx,
   CXX,
   ObjC,
   ObjCXX,

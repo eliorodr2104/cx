@@ -1,6 +1,6 @@
 # Compiler Design
 
-Architecture, shared Clang integration, implementation dependencies, tests, and measurement checkpoints. No current fork implementation is claimed.
+Architecture, shared Clang integration, implementation dependencies, tests, and measurement checkpoints. Implemented milestones are recorded under [milestones/](milestones/README.md); everything else is design, not a claim about the fork.
 
 ## Documents
 
@@ -15,6 +15,7 @@ Architecture, shared Clang integration, implementation dependencies, tests, and 
 - [Frontend Pipeline](frontend-pipeline.md)
 - [Dependency-Correct Implementation Roadmap](implementation-roadmap.md)
 - [Language Mode and Driver Interface](language-mode.md)
+- [Milestone Records](milestones/README.md)
 - [Module Build and Artifact Integration](module-artifacts.md)
 - [Parser Strategy and Compatibility Gates](parser.md)
 - [Semantic Analysis](sema.md)

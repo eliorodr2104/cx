@@ -23,7 +23,8 @@ undeclared examples to stop cleanly at syntax recognition.
 
 Use `lit` to drive tests, Clang `-verify` for expected diagnostics, and FileCheck for
 selected IR/AST/output properties. Avoid full fragile text snapshots when a small
-property check is sufficient. Test commands using `-x cx` are enabled only after M0.
+property check is sufficient. Test commands using `-x cx` work from M0 onwards; the
+Cx regression tree lives in `clang/test/Cx`.
 See the official references in [SOURCES](../SOURCES.md).
 
 ## Differential C tests

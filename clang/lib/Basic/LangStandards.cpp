@@ -25,6 +25,8 @@ StringRef clang::languageToString(Language L) {
     return "ClangIR";
   case Language::C:
     return "C";
+  case Language::Cx:
+    return "Cx";
   case Language::CXX:
     return "C++";
   case Language::ObjC:
@@ -104,6 +106,7 @@ LangStandard::Kind clang::getDefaultLanguageStandard(clang::Language Lang,
     return LangStandard::lang_openclcpp10;
   case Language::Asm:
   case Language::C:
+  case Language::Cx:
     // The PS4 uses C99 as the default C standard.
     if (T.isPS4())
       return LangStandard::lang_gnu99;
