@@ -117,8 +117,9 @@ failed, 0 unexpected failures.
 - **`extern(C)` does not exist yet.** There is no way to ask for a C-facing
   entry from an owned file other than declaring the entity in an unowned
   header first. The spelling belongs with the error and bridge work (M13).
-- **Variables are not covered.** Only functions get Cx linkage. Module-owned
-  data keeps its C symbol.
+- ~~**Variables are not covered.**~~ Closed by [M4.2](M4.2.md): an
+  externally visible file-scope variable in an owned file carries its module
+  in its symbol, decided by its first declaration.
 - **The encoding is not demangler-friendly.** The symbol starts with `_Z`, so
   ordinary C++ demanglers will try and fail on it rather than print something
   useful. A Cx-aware tool is M19.

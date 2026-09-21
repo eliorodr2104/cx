@@ -930,6 +930,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(SEMA_DECL_REFS);
   RECORD(WEAK_UNDECLARED_IDENTIFIERS);
   RECORD(EXTNAME_UNDECLARED_IDENTIFIERS);
+  RECORD(CX_MODULE_OWNERSHIP);
   RECORD(PENDING_IMPLICIT_INSTANTIATIONS);
   RECORD(UPDATE_VISIBLE);
   RECORD(DELAYED_NAMESPACE_LEXICAL_VISIBLE_RECORD);
@@ -6285,6 +6286,22 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema *SemaPtr, StringRef isysroot,
   if (!ExtnameUndeclaredIdentifiers.empty())
     Stream.EmitRecord(EXTNAME_UNDECLARED_IDENTIFIERS,
                       ExtnameUndeclaredIdentifiers);
+
+  // Cx: which module owns each file. Ownership is per file rather than per
+  // declaration, so it has to travel with the artifact or a type read back
+  // from it loses the owner its source gave it -- and with it continuations
+  // and `internal` access.
+  if (PP->getLangOpts().CX && !PP->getCxModuleOwnership().empty()) {
+    RecordData CxOwners;
+    for (const auto &Owned : PP->getCxModuleOwnership()) {
+      AddSourceLocation(
+          PP->getSourceManager().getLocForStartOfFile(Owned.first), CxOwners);
+      AddIdentifierRef(Owned.second.Name, CxOwners);
+      AddSourceLocation(Owned.second.DirectiveLoc, CxOwners);
+      CxOwners.push_back(Owned.second.FromBuild);
+    }
+    Stream.EmitRecord(CX_MODULE_OWNERSHIP, CxOwners);
+  }
 
   if (!WritingModule) {
     // Write the submodules that were imported, if any.

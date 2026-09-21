@@ -36,6 +36,52 @@ bool Sema::isCxContextualKeyword(const IdentifierInfo *II, Scope *S) {
   return R.empty();
 }
 
+/// The module that owns the entity \p Previous names, following the rule that
+/// an entity's identity is decided by its first declaration and never by a
+/// later one. \p SawPrevious reports whether any previous declaration of the
+/// same kind was found at all, which is what tells "no owner because the
+/// entity is a C one" from "no owner because it is new here".
+template <typename DeclT>
+static const IdentifierInfo *cxModuleOfFirstDecl(const LookupResult &Previous,
+                                                 bool &SawPrevious) {
+  SawPrevious = false;
+  for (const NamedDecl *ND : Previous) {
+    const auto *Prev = dyn_cast<DeclT>(ND->getUnderlyingDecl());
+    if (!Prev)
+      continue;
+    SawPrevious = true;
+    if (const auto *A = Prev->template getAttr<CxLinkageAttr>())
+      return A->getModule();
+  }
+  return nullptr;
+}
+
+void Sema::AddCxLinkage(VarDecl *VD, const LookupResult &Previous) {
+  if (!getLangOpts().CX || VD->hasAttr<CxLinkageAttr>())
+    return;
+
+  // Only externally visible module-owned data needs a module in its symbol.
+  // A local, a member, or anything with internal linkage is already distinct
+  // from every other translation unit's.
+  if (!VD->getDeclContext()->getRedeclContext()->isTranslationUnit() ||
+      VD->getStorageClass() == SC_Static)
+    return;
+
+  bool SawPrevious = false;
+  const IdentifierInfo *Module =
+      cxModuleOfFirstDecl<VarDecl>(Previous, SawPrevious);
+  if (!Module) {
+    if (SawPrevious)
+      return; // An existing C entity keeps its C identity.
+    Module = Context.getCxModuleOwner(VD->getLocation());
+    if (!Module)
+      return;
+  }
+
+  VD->addAttr(CxLinkageAttr::CreateImplicit(
+      Context, const_cast<IdentifierInfo *>(Module)));
+}
+
 void Sema::AddCxLinkage(FunctionDecl *FD, const LookupResult &Previous) {
   if (!getLangOpts().CX || FD->hasAttr<CxLinkageAttr>())
     return;
@@ -50,18 +96,9 @@ void Sema::AddCxLinkage(FunctionDecl *FD, const LookupResult &Previous) {
   // a module keeps its module when a later declaration is written in an
   // unowned file. This runs before redeclaration merging, so the answer comes
   // from the lookup result rather than from a redeclaration chain.
-  const IdentifierInfo *Module = nullptr;
   bool SawPrevious = false;
-  for (const NamedDecl *ND : Previous) {
-    const auto *Prev = dyn_cast<FunctionDecl>(ND->getUnderlyingDecl());
-    if (!Prev)
-      continue;
-    SawPrevious = true;
-    if (const auto *A = Prev->getAttr<CxLinkageAttr>()) {
-      Module = A->getModule();
-      break;
-    }
-  }
+  const IdentifierInfo *Module =
+      cxModuleOfFirstDecl<FunctionDecl>(Previous, SawPrevious);
 
   if (!Module) {
     if (SawPrevious)
@@ -229,7 +266,8 @@ static std::string renderCxLabels(ArrayRef<const IdentifierInfo *> Labels) {
 
 static std::string renderCxLabelsOf(const FunctionDecl *FD) {
   SmallVector<const IdentifierInfo *, 4> Labels;
-  for (const ParmVarDecl *PVD : FD->parameters())
+  // The implicit receiver is not a written argument and has no label.
+  for (const ParmVarDecl *PVD : FD->parameters().drop_front(cxSelfOffset(FD)))
     Labels.push_back(getCxLabel(PVD));
   return renderCxLabels(Labels);
 }
@@ -355,6 +393,36 @@ static FunctionDecl *findCxMethodDeclaration(ASTContext &Ctx,
   return nullptr;
 }
 
+void Sema::DiagnoseCxNearMiss(const RecordDecl *RD, const FunctionDecl *New) {
+  // Only a continuation implements what was declared elsewhere. Inside the
+  // primary definition two same-named members are an ordinary overload pair.
+  if (!RD->isCompleteDefinition())
+    return;
+
+  for (const Decl *D : RD->decls()) {
+    const auto *Old = dyn_cast<FunctionDecl>(D);
+    if (!Old || Old == New || !Old->hasAttr<CxMethodAttr>())
+      continue;
+    if (Old->getDeclName() != New->getDeclName())
+      continue;
+    // A member that already has an implementation is not the one this
+    // definition meant to supply.
+    if (Old->isDefined())
+      continue;
+    // Same name and same number of written arguments, yet not a
+    // redeclaration: the labels or the parameter types drifted. Left alone
+    // this silently becomes a new member and a link error on the declared
+    // one.
+    if (Old->getNumParams() != New->getNumParams())
+      continue;
+
+    Diag(New->getLocation(), diag::warn_cx_continuation_near_miss) << Old;
+    Diag(Old->getLocation(), diag::note_cx_near_miss_declaration)
+        << Old << renderCxLabelsOf(Old);
+    return;
+  }
+}
+
 Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
                                     bool NonMutating) {
   auto *RD = dyn_cast_or_null<RecordDecl>(TagD);
@@ -429,7 +497,14 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
   Params.push_back(Self);
 
   const DeclaratorChunk::FunctionTypeInfo &FTI = D.getFunctionTypeInfo();
-  for (unsigned I = 0; I != FTI.NumParams; ++I) {
+  // `(void)` is an empty parameter list written the C way: the declarator
+  // carries one unnamed void pseudo-parameter that the function type does
+  // not, so it must not become a real one here.
+  bool VoidParameterList =
+      FTI.NumParams == 1 && !FTI.Params[0].Ident &&
+      isa_and_nonnull<ParmVarDecl>(FTI.Params[0].Param) &&
+      cast<ParmVarDecl>(FTI.Params[0].Param)->getType()->isVoidType();
+  for (unsigned I = 0; !VoidParameterList && I != FTI.NumParams; ++I) {
     if (auto *P = dyn_cast_or_null<ParmVarDecl>(FTI.Params[I].Param)) {
       P->setOwningFunction(FD);
       P->setScopeInfo(0, Params.size());
@@ -459,6 +534,8 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
   if (FunctionDecl *Prev = findCxMethodDeclaration(Context, RD, FD)) {
     FD->setPreviousDeclaration(Prev);
     FD->setAccess(Prev->getAccess());
+  } else {
+    DiagnoseCxNearMiss(RD, FD);
   }
 
   RD->addDecl(FD);
@@ -488,6 +565,56 @@ bool Sema::isCxSelfReference(const Expr *E) {
   const auto *FD = dyn_cast_or_null<FunctionDecl>(PVD->getDeclContext());
   return FD && FD->hasAttr<CxMethodAttr>() && FD->getNumParams() > 0 &&
          FD->getParamDecl(0) == PVD;
+}
+
+/// The object a modification ultimately reaches, looking through member
+/// access, indexing and dereference. \p Member, when given, receives the
+/// innermost member the chain names.
+static const Expr *cxUnderlyingObject(const Expr *E,
+                                      const ValueDecl **Member = nullptr) {
+  while (E) {
+    E = E->IgnoreParenImpCasts();
+    if (const auto *ME = dyn_cast<MemberExpr>(E)) {
+      if (Member && !*Member)
+        *Member = ME->getMemberDecl();
+      E = ME->getBase();
+      continue;
+    }
+    if (const auto *ASE = dyn_cast<ArraySubscriptExpr>(E)) {
+      E = ASE->getBase();
+      continue;
+    }
+    if (const auto *UO = dyn_cast<UnaryOperator>(E);
+        UO && UO->getOpcode() == UO_Deref) {
+      E = UO->getSubExpr();
+      continue;
+    }
+    break;
+  }
+  return E;
+}
+
+bool Sema::DiagnoseCxNonMutatingWrite(const Expr *E, SourceLocation Loc) {
+  if (!getLangOpts().CX)
+    return false;
+  FunctionDecl *Method = getCurrentCxMethod();
+  if (!Method || Method->getNumParams() == 0)
+    return false;
+  // Only a `~mutating` method promised anything; a mutating one reaching here
+  // is an ordinary const problem.
+  QualType Pointee = Method->getParamDecl(0)->getType()->getPointeeType();
+  if (Pointee.isNull() || !Pointee.isConstQualified())
+    return false;
+  // The message names the member being written, so a write that reaches no
+  // member -- `*self = other` -- is left to C's own diagnostic.
+  const ValueDecl *Member = nullptr;
+  if (!isCxSelfReference(cxUnderlyingObject(E, &Member)) || !Member)
+    return false;
+
+  Diag(Loc, diag::err_cx_write_through_non_mutating)
+      << Member << Method << E->getSourceRange();
+  Diag(Method->getLocation(), diag::note_cx_remove_non_mutating) << Method;
+  return true;
 }
 
 FunctionDecl *Sema::getCurrentCxMethod() {
@@ -690,20 +817,29 @@ static const RecordDecl *getCxMemberRecord(const NamedDecl *Member) {
   return dyn_cast_or_null<RecordDecl>(Member->getDeclContext());
 }
 
-bool Sema::CheckCxMemberAccess(const NamedDecl *Member, SourceLocation Loc,
-                               bool ForWrite) {
+bool Sema::isCxMemberAccessible(const NamedDecl *Member, SourceLocation Loc,
+                                bool ForWrite) {
+  return !cxMemberAccessLevelViolated(Member, Loc, ForWrite).has_value();
+}
+
+/// The access level \p Member would violate at \p Loc, or nothing when the
+/// access is permitted. Shared by the check that diagnoses and by code
+/// completion, which must not.
+std::optional<unsigned>
+Sema::cxMemberAccessLevelViolated(const NamedDecl *Member, SourceLocation Loc,
+                                  bool ForWrite) {
   if (!getLangOpts().CX || !Member)
-    return false;
+    return std::nullopt;
   const auto *A = Member->getAttr<CxAccessAttr>();
   if (!A)
-    return false;
+    return std::nullopt;
   unsigned Level = ForWrite ? A->getWrite() : A->getRead();
   if (Level == CxAccess_public)
-    return false;
+    return std::nullopt;
 
   const RecordDecl *RD = getCxMemberRecord(Member);
   if (!RD)
-    return false;
+    return std::nullopt;
 
   // Access is decided by the declaration's ownership, not by the module of
   // whoever included the header.
@@ -714,23 +850,33 @@ bool Sema::CheckCxMemberAccess(const NamedDecl *Member, SourceLocation Loc,
   // is the type's own implementation.
   for (const DeclContext *DC = CurContext; DC; DC = DC->getLexicalParent()) {
     if (DC->getPrimaryContext() == RD->getPrimaryContext())
-      return false;
+      return std::nullopt;
     if (const auto *FD = dyn_cast<FunctionDecl>(DC))
       if (FD->hasAttr<CxMethodAttr>() &&
           isa<RecordDecl>(FD->getDeclContext()) &&
           cast<RecordDecl>(FD->getDeclContext())->getPrimaryContext() ==
               RD->getPrimaryContext())
-        return false;
+        return std::nullopt;
   }
 
   // Internal additionally admits any code in the owning module.
   if (Level == CxAccess_internal && Owner &&
       Context.getCxModuleOwner(Loc) == Owner)
+    return std::nullopt;
+
+  return Level;
+}
+
+bool Sema::CheckCxMemberAccess(const NamedDecl *Member, SourceLocation Loc,
+                               bool ForWrite) {
+  std::optional<unsigned> Level =
+      cxMemberAccessLevelViolated(Member, Loc, ForWrite);
+  if (!Level)
     return false;
 
-  Diag(Loc, diag::err_cx_member_inaccessible) << Member << Level << ForWrite;
+  Diag(Loc, diag::err_cx_member_inaccessible) << Member << *Level << ForWrite;
   Diag(Member->getLocation(), diag::note_cx_member_declared_here)
-      << Level << Member;
+      << *Level << Member;
   return true;
 }
 

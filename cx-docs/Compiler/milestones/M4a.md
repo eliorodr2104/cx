@@ -127,14 +127,17 @@ failed, 0 unexpected failures.
 - **No generated construction.** `Counter(value: 0)` does not exist; M4c.
 - **No `deinit`, no copy or destruction hooks.** Value operations are M7.
 - **Methods on classes do not exist**, because classes do not exist yet (M11).
+- A method written `(void)` crashed the compiler as shipped here; fixed in
+  [M4.3](M4.3.md).
 - **A method cannot be overloaded on the receiver's mutability**: `~mutating`
   and mutating versions of one name are two declarations of the same method,
   not an overload pair.
 - Methods with argument labels, and overloaded methods, did not work as
   shipped here; [M4.1](M4.1.md) fixes both and changes the symbols of
   labelled methods.
-- **The diagnostic for writing through a `~mutating` receiver** is C's generic
-  const message naming `self`, not a message about the promise.
+- ~~**The diagnostic for writing through a `~mutating` receiver** is C's
+  generic const message naming `self`.~~ Replaced in [M4.2](M4.2.md) by a
+  message about the promise, with a note offering to drop `~mutating`.
 
 ## Runnable demonstration
 

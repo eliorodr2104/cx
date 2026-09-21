@@ -387,6 +387,10 @@ def CPre2yCompatPedantic : DiagGroup<"pre-c2y-compat-pedantic",
                                      [CPre2yCompat]>;
 
 // Warnings for C++ code which is not compatible with previous C++ standards.
+// Cx: a continuation member that nearly, but not quite, matches a member
+// declared elsewhere.
+def CxNearMiss : DiagGroup<"cx-near-miss">;
+
 def CXXPre14Compat : DiagGroup<"pre-c++14-compat">;
 def : DiagGroup<"c++98-c++11-compat", [CXXPre14Compat]>;
 def CXXPre14CompatPedantic : DiagGroup<"pre-c++14-compat-pedantic",

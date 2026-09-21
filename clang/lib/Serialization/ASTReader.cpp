@@ -3820,6 +3820,7 @@ llvm::Error ASTReader::ReadASTBlock(ModuleFile &F,
       case IDENTIFIER_OFFSET:
       case INTERESTING_IDENTIFIERS:
       case STATISTICS:
+      case CX_MODULE_OWNERSHIP:
       case PP_ASSUME_NONNULL_LOC:
       case PP_CONDITIONAL_STACK:
       case PP_COUNTER_VALUE:
@@ -4167,6 +4168,27 @@ llvm::Error ASTReader::ReadASTBlock(ModuleFile &F,
         }
       }
       break;
+
+    case CX_MODULE_OWNERSHIP: {
+      // Four entries per owned file: the file, the module, where `#module`
+      // was written, and whether the build assigned it.
+      if (Record.size() % 4 != 0)
+        return llvm::createStringError(
+            std::errc::illegal_byte_sequence,
+            "invalid Cx module ownership record");
+      CxModuleOwnership &Owners = PP.getCxModuleOwnership();
+      for (unsigned Idx = 0, N = Record.size(); Idx != N;) {
+        SourceLocation FileLoc = ReadSourceLocation(F, Record, Idx);
+        IdentifierInfo *Name = getLocalIdentifier(F, Record[Idx++]);
+        SourceLocation DirectiveLoc = ReadSourceLocation(F, Record, Idx);
+        bool FromBuild = Record[Idx++] != 0;
+        if (FileLoc.isInvalid() || !Name)
+          continue;
+        Owners.setOwner(SourceMgr.getFileID(FileLoc),
+                        {Name, DirectiveLoc, FromBuild});
+      }
+      break;
+    }
 
     case PP_ASSUME_NONNULL_LOC: {
       unsigned Idx = 0;

@@ -852,6 +852,13 @@ bool ResultBuilder::isInterestingDecl(const NamedDecl *ND,
   if (shouldIgnoreDueToReservedName(ND, SemaRef))
     return false;
 
+  // Cx: a member the code being written could not use is not a candidate.
+  // Cx access is not the C++ access specifier, so nothing else filters it.
+  if (SemaRef.getLangOpts().CX &&
+      !SemaRef.isCxMemberAccessible(ND, SemaRef.getPreprocessor().getCodeCompletionLoc(),
+                                    /*ForWrite=*/false))
+    return false;
+
   if (Filter == &ResultBuilder::IsNestedNameSpecifier ||
       (isa<NamespaceDecl>(ND) && Filter != &ResultBuilder::IsNamespace &&
        Filter != &ResultBuilder::IsNamespaceOrAlias && Filter != nullptr))
@@ -3187,6 +3194,10 @@ static std::string FormatFunctionParameter(
     } else {
       Type.getAsStringInternal(Result, Policy);
     }
+    // Cx: the call writes the argument label, not the local name, so the
+    // placeholder has to show it.
+    if (const auto *L = Param->getAttr<CxArgumentLabelAttr>())
+      Result = (L->getLabel()->getName() + ": " + Result).str();
     return Result;
   }
 
@@ -3363,6 +3374,12 @@ static void AddFunctionParameterChunks(
     // C++23 introduces an explicit object parameter, a.k.a. "deducing this"
     // Skip it for autocomplete and treat the next parameter as the first
     // parameter
+    // Cx: the implicit receiver is not a written argument either, so the
+    // signature a completion shows must not start with it.
+    if (FirstParameter && Param->isImplicit() &&
+        Function->hasAttr<CxMethodAttr>())
+      continue;
+
     if (FirstParameter && Param->isExplicitObjectParameter()) {
       continue;
     }
@@ -5560,6 +5577,18 @@ AddRecordMembersCompletionResults(Sema &SemaRef, ResultBuilder &Results,
       /*IncludeDependentBases=*/true,
       SemaRef.CodeCompletion().CodeCompleter->loadExternal());
 
+  // Cx: a method is an associated function held by the record, so it has
+  // ordinary rather than member lookup, and the visible-declaration walk
+  // above never reaches it. An initializer is reached through `Type(...)`
+  // instead, so it is not a member candidate.
+  if (SemaRef.getLangOpts().CX) {
+    for (Decl *D : RD->decls()) {
+      auto *M = dyn_cast<FunctionDecl>(D);
+      if (M && M->hasAttr<CxMethodAttr>() && !SemaRef.isCxInitializer(M))
+        Consumer.FoundDecl(M, /*Hiding=*/nullptr, RD, /*InBaseClass=*/false);
+    }
+  }
+
   if (SemaRef.getLangOpts().CPlusPlus) {
     if (!Results.empty()) {
       // The "template" keyword can follow "->" or "." in the grammar.
@@ -5998,6 +6027,12 @@ void SemaCodeCompletion::CodeCompleteMemberReferenceExpr(
   OtherOpBase = unwrapParenList(OtherOpBase);
   if (!Base || !CodeCompleter)
     return;
+
+  // Cx: `self.field` is the receiver shorthand, the one pointer that takes
+  // `.`. Member lookup turns it into an arrow access, and completion has to
+  // agree or it offers nothing at all.
+  if (SemaRef.getLangOpts().CX && !IsArrow && SemaRef.isCxSelfReference(Base))
+    IsArrow = true;
 
   ExprResult ConvertedBase =
       SemaRef.PerformMemberExprBaseConversion(Base, IsArrow);

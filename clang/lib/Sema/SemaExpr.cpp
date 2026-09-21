@@ -14364,6 +14364,11 @@ static bool CheckForModifiableLvalue(Expr *E, SourceLocation Loc, Sema &S) {
   if (IsLV == Expr::MLV_Valid)
     return false;
 
+  // Cx: the receiver of a `~mutating` method is const because of the promise
+  // the method made, so say that rather than talking about `self`'s type.
+  if (S.DiagnoseCxNonMutatingWrite(E, OrigLoc))
+    return true;
+
   unsigned DiagID = 0;
   bool NeedType = false;
   switch (IsLV) { // C99 6.5.16p2

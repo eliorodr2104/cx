@@ -27,6 +27,6 @@ void on_constant(void) {
 struct Guard {
   int value;
   // The promise is enforced: a `~mutating` method cannot write the receiver.
-  // expected-note@+1 {{variable 'self' declared const here}}
-  ~mutating void cheat() { self.value = 1; } // expected-error {{cannot assign to variable 'self' with const-qualified type 'const struct Guard *'}}
+  // expected-note@+1 {{remove '~mutating' from 'cheat' if it modifies the receiver}}
+  ~mutating void cheat() { self.value = 1; } // expected-error {{cannot modify 'value' through the receiver of '~mutating' method 'cheat'}}
 };

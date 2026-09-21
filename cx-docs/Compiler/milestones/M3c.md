@@ -133,9 +133,10 @@ failed, 0 unexpected failures.
   non-throwing C function pointer is expected. M13.
 - **The overload set is per translation unit.** Cross-module overloading needs
   declarations to be visible, which is still `#include`; artifacts are M15.
-- **Near-miss diagnostics are missing**: a definition whose labels drifted from
-  its intended declaration becomes a separate overload silently in an owned
-  file. G04 and M4.
+- ~~**Near-miss diagnostics are missing.**~~ Closed for members by
+  [M4.2](M4.2.md): a continuation definition that nearly matches a declared,
+  unimplemented member is reported rather than silently becoming a second
+  one.
 - **`enable_if`-style constraints do not apply.** Cx has no constraints yet.
 
 ## Runnable demonstration

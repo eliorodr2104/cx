@@ -738,6 +738,16 @@ Parser::ParseExternalDeclaration(ParsedAttributes &Attrs,
     return nullptr;
   }
 
+  // Cx: `#module` must precede the file's declarations. The preprocessor
+  // cannot tell a header guard from real content, so the signal comes from
+  // here, where only ordinary declarations arrive.
+  if (getLangOpts().CX && Tok.isNot(tok::eof)) {
+    SourceLocation Loc = PP.getSourceManager().getExpansionLoc(
+        Tok.getLocation());
+    PP.getCxModuleOwnership().noteDeclarationIn(
+        PP.getSourceManager().getFileID(Loc), Loc);
+  }
+
   Decl *SingleDecl = nullptr;
   switch (Tok.getKind()) {
   case tok::annot_pragma_vis:

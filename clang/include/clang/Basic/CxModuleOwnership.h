@@ -57,8 +57,32 @@ public:
 
   bool empty() const { return Owners.empty(); }
 
+  /// Note that \p FID has begun an ordinary declaration. This is recorded by
+  /// the parser rather than the preprocessor, which is what makes it
+  /// transparent to directives: a header guard is not a declaration, and the
+  /// preprocessor's own "read any tokens" flag cannot tell the two apart.
+  void noteDeclarationIn(FileID FID, SourceLocation Loc) {
+    WithDeclarations.try_emplace(FID, Loc);
+  }
+
+  /// Whether an ordinary declaration has been started in \p FID.
+  bool hasDeclarations(FileID FID) const {
+    return WithDeclarations.contains(FID);
+  }
+
+  /// Where the first ordinary declaration in \p FID starts.
+  SourceLocation getFirstDeclarationIn(FileID FID) const {
+    auto It = WithDeclarations.find(FID);
+    return It == WithDeclarations.end() ? SourceLocation() : It->second;
+  }
+
+  using const_iterator = llvm::DenseMap<FileID, Owner>::const_iterator;
+  const_iterator begin() const { return Owners.begin(); }
+  const_iterator end() const { return Owners.end(); }
+
 private:
   llvm::DenseMap<FileID, Owner> Owners;
+  llvm::DenseMap<FileID, SourceLocation> WithDeclarations;
 };
 
 } // namespace clang

@@ -48,3 +48,11 @@ int use(void) {
 
 // A call passes the receiver's address; nothing is copied.
 // CHECK: call void @"_ZN7Counter23_Cx0$Counters$incrementEP7Counter"(ptr noundef %c)
+
+// `(void)` is an empty parameter list written the C way: the declarator
+// carries a void pseudo-parameter that the receiver must not be added to.
+typedef struct Empty {
+  int v;
+  ~mutating int read(void) { return v; }
+} Empty;
+int use_empty(Empty *e) { return e->read(); }

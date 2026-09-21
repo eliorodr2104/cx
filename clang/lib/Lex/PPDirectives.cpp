@@ -4374,6 +4374,14 @@ void Preprocessor::HandleCxModuleDirective(Token ModuleTok,
     return;
   }
 
+  // The directive names the file's module, so nothing in the file may already
+  // have been declared under no module at all.
+  if (CxModules.hasDeclarations(FID)) {
+    Diag(ModuleTok, diag::err_cx_module_after_declaration);
+    Diag(CxModules.getFirstDeclarationIn(FID),
+         diag::note_cx_module_first_declaration);
+  }
+
   CxModules.setOwner(FID, {Name, ModuleTok.getLocation(), /*FromBuild=*/false});
 }
 

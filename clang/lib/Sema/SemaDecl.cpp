@@ -8347,6 +8347,9 @@ NamedDecl *Sema::ActOnVariableDeclarator(
         isDeclInScope(Previous.getFoundDecl(), OriginalDC, S, false));
 
   if (!getLangOpts().CPlusPlus) {
+    // Cx linkage is decided before merging, from the lookup result, so the
+    // first declaration decides it -- exactly as it does for a function.
+    AddCxLinkage(NewVD, Previous);
     D.setRedeclaration(CheckVariableDeclaration(NewVD, Previous));
   } else {
     // If this is an explicit specialization of a static data member, check it.

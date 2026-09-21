@@ -114,11 +114,9 @@ failed, 0 unexpected failures.
 - **No access control**, so a helper introduced only in a continuation is
   public rather than private by default, and `private`, `internal` and
   `private(set)` do not exist. M4c.
-- **No near-miss diagnostics.** A definition whose labels or parameter types
-  drifted from the declaration it meant to implement silently becomes a new
-  member, and the declared one is left without an implementation. This is the
-  same gap M3c recorded, and belongs to
-  [G04](../../OPEN-ISSUES.md#g04--source-model-and-visibility).
+- ~~**No near-miss diagnostics.**~~ Closed by [M4.2](M4.2.md): a definition
+  whose labels or parameter types drifted from the declaration it meant to
+  implement is reported where it is written, under `-Wcx-near-miss`.
 - **An unimplemented declared member is not reported.** Nothing checks that
   every declared method acquired a definition somewhere in the module; that
   needs the module-wide view of M15.

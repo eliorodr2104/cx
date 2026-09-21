@@ -747,6 +747,10 @@ enum ASTRecordTypes {
   /// Record that encodes the number of submodules, their base ID in the AST
   /// file, and for each module the relative bit offset into the stream.
   SUBMODULE_METADATA = 80,
+
+  /// Record code for which Cx module owns each file of this module, so that
+  /// a declaration loaded from it keeps the owner its source gave it.
+  CX_MODULE_OWNERSHIP = 81,
 };
 
 /// Record types used within a source manager block.

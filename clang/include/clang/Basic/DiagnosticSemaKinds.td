@@ -2748,6 +2748,12 @@ def err_cx_continuation_adds_field : Error<
   "a continuation of %0 cannot add a stored field">;
 def note_cx_primary_definition : Note<
   "primary definition of %0 is here">;
+def warn_cx_continuation_near_miss : Warning<
+  "this definition does not match the declared member %0; it introduces a new "
+  "member and leaves the declared one unimplemented">,
+  InGroup<CxNearMiss>, DefaultError;
+def note_cx_near_miss_declaration : Note<
+  "%0 is declared here with the argument labels '%1'">;
 def err_cx_method_redefinition : Error<
   "redefinition of Cx method %0">;
 
@@ -2757,6 +2763,10 @@ def err_cx_method_needs_prototype : Error<
   "a Cx method needs a parameter list">;
 def err_cx_method_name : Error<
   "a Cx method needs an ordinary name">;
+def err_cx_write_through_non_mutating : Error<
+  "cannot modify %0 through the receiver of '~mutating' method %1">;
+def note_cx_remove_non_mutating : Note<
+  "remove '~mutating' from %0 if it modifies the receiver">;
 def err_cx_mutating_on_const : Error<
   "cannot call mutating method %0 on a constant value of type %1">;
 def note_cx_mark_non_mutating : Note<

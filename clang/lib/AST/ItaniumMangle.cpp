@@ -508,7 +508,7 @@ private:
   void mangleDestructorName(const CXXDestructorDecl *CDD,
                             ArrayRef<StringRef> AdditionalAbiTags = {});
   void mangleRegCallName(const IdentifierInfo *II);
-  void mangleCxName(const FunctionDecl *FD, const IdentifierInfo *II);
+  void mangleCxName(const NamedDecl *ND, const IdentifierInfo *II);
   void mangleDeviceStubName(const IdentifierInfo *II);
   void mangleOCLDeviceStubName(const IdentifierInfo *II);
   void mangleSourceNameWithAbiTags(const NamedDecl *ND,
@@ -748,15 +748,15 @@ bool ItaniumMangleContextImpl::isUniqueInternalLinkageDecl(
 }
 
 bool ItaniumMangleContextImpl::shouldMangleCXXName(const NamedDecl *D) {
+  // A Cx entity's symbol carries the owning module, whether it is a function
+  // or module-owned data, so it is never the plain source name.
+  if (D->hasAttr<CxLinkageAttr>())
+    return true;
+
   if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
     LanguageLinkage L = FD->getLanguageLinkage();
     // Overloadable functions need mangling.
     if (FD->hasAttr<OverloadableAttr>())
-      return true;
-
-    // So do functions with Cx linkage: their symbol carries the owning module
-    // and the parameter types, not just the base name.
-    if (FD->hasAttr<CxLinkageAttr>())
       return true;
 
     // "main" is not mangled.
@@ -1565,8 +1565,8 @@ void CXXNameMangler::mangleUnqualifiedName(
         mangleOCLDeviceStubName(II);
       else if (IsRegCall)
         mangleRegCallName(II);
-      else if (FD && FD->hasAttr<CxLinkageAttr>())
-        mangleCxName(FD, II);
+      else if (ND && ND->hasAttr<CxLinkageAttr>())
+        mangleCxName(ND, II);
       else
         mangleSourceName(II);
 
@@ -1782,9 +1782,10 @@ void CXXNameMangler::mangleDestructorName(
 ///
 /// The version prefix is deliberate: this encoding is experimental and is not
 /// a distribution promise. See cx-docs/abi/linkage-and-mangling.md.
-void CXXNameMangler::mangleCxName(const FunctionDecl *FD,
+void CXXNameMangler::mangleCxName(const NamedDecl *ND,
                                   const IdentifierInfo *II) {
-  const auto *A = FD->getAttr<CxLinkageAttr>();
+  const auto *A = ND->getAttr<CxLinkageAttr>();
+  const auto *FD = dyn_cast<FunctionDecl>(ND);
   SmallString<64> Name;
   llvm::raw_svector_ostream NameOS(Name);
   NameOS << "_Cx0$";
@@ -1801,9 +1802,12 @@ void CXXNameMangler::mangleCxName(const FunctionDecl *FD,
   // label, which keeps a wholly unlabeled function's symbol unchanged. A
   // method's implicit receiver is not a written parameter and has no place
   // in the list.
-  ArrayRef<ParmVarDecl *> Params = FD->parameters();
-  if (FD->hasAttr<CxMethodAttr>() && !Params.empty())
-    Params = Params.drop_front();
+  ArrayRef<ParmVarDecl *> Params;
+  if (FD) {
+    Params = FD->parameters();
+    if (FD->hasAttr<CxMethodAttr>() && !Params.empty())
+      Params = Params.drop_front();
+  }
   if (llvm::any_of(Params, [](const ParmVarDecl *PVD) {
         return PVD->hasAttr<CxArgumentLabelAttr>();
       })) {

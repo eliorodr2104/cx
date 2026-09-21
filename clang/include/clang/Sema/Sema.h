@@ -4204,6 +4204,10 @@ public:
   /// symbol is the mangled Cx name. Defined in SemaCx.cpp.
   void AddCxLinkage(FunctionDecl *FD, const LookupResult &Previous);
 
+  /// The same for module-owned data: an externally visible file-scope
+  /// variable in an owned file carries its module in its symbol.
+  void AddCxLinkage(VarDecl *VD, const LookupResult &Previous);
+
   /// 1 when \p FD carries a Cx implicit receiver, which is a parameter no
   /// call writes. Anything that lines written arguments up with parameters
   /// has to skip it.
@@ -4246,6 +4250,11 @@ public:
   Decl *ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
                                 bool NonMutating);
 
+  /// Report a continuation member that matches a declared but unimplemented
+  /// member by name and arity yet is not a redeclaration of it, which would
+  /// otherwise introduce a second member silently.
+  void DiagnoseCxNearMiss(const RecordDecl *RD, const FunctionDecl *New);
+
   /// The Cx method \p Name of the record \p RD, or null.
   FunctionDecl *LookupCxMethod(const RecordDecl *RD, DeclarationName Name);
 
@@ -4267,6 +4276,17 @@ public:
   /// \p ForWrite selects the write access level. Returns true on error.
   bool CheckCxMemberAccess(const NamedDecl *Member, SourceLocation Loc,
                            bool ForWrite);
+
+  /// The same question without diagnosing, for code completion: a member the
+  /// code being written could not use is not a candidate.
+  bool isCxMemberAccessible(const NamedDecl *Member, SourceLocation Loc,
+                            bool ForWrite);
+
+  /// The access level \p Member would violate at \p Loc, or nothing when the
+  /// access is permitted.
+  std::optional<unsigned> cxMemberAccessLevelViolated(const NamedDecl *Member,
+                                                      SourceLocation Loc,
+                                                      bool ForWrite);
 
   /// Build the generated memberwise construction of \p Ty: one labelled value
   /// per stored field, in declaration order.
@@ -4308,6 +4328,11 @@ public:
   /// Whether \p E refers to the implicit `self` receiver of a Cx method,
   /// which is the one pointer that accepts `.` member access.
   bool isCxSelfReference(const Expr *E);
+
+  /// Report a modification of \p E that breaks the promise of the enclosing
+  /// `~mutating` method, in place of C's generic const message about `self`.
+  /// Returns true when it diagnosed.
+  bool DiagnoseCxNonMutatingWrite(const Expr *E, SourceLocation Loc);
 
   /// The Cx method whose body is being parsed, or null.
   FunctionDecl *getCurrentCxMethod();

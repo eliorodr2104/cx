@@ -1021,7 +1021,7 @@ def AnalyzerNoReturn : InheritableAttr {
 def CxLinkage : InheritableAttr {
   let Spellings = [];
   let Args = [IdentifierArgument<"Module", /*opt=*/1>];
-  let Subjects = SubjectList<[Function], ErrorDiag>;
+  let Subjects = SubjectList<[Function, Var], ErrorDiag>;
   let SemaHandler = 0;
   let Documentation = [InternalOnly];
 }

@@ -559,6 +559,10 @@ def warn_pp_invalid_directive : Warning<
   err_pp_invalid_directive.Summary>, InGroup<DiagGroup<"unknown-directives">>;
 def err_cx_module_expected_name : Error<
   "expected a module name after '#module'">;
+def err_cx_module_after_declaration : Error<
+  "'#module' must precede every declaration in its file">;
+def note_cx_module_first_declaration : Note<
+  "first declaration in this file is here">;
 def err_cx_module_repeated : Error<
   "this file already declares a module owner">;
 def note_cx_module_previous : Note<
