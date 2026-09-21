@@ -12975,10 +12975,14 @@ static void NoteFunctionCandidate(Sema &S, OverloadCandidate *Cand,
   case ovl_fail_cx_argument_label: {
     unsigned BadArg = 0;
     S.CxCandidateAcceptsCallLabels(Fn, BadArg);
+    // A method's first parameter is the implicit receiver, which no written
+    // argument corresponds to.
+    unsigned Self = Fn->hasAttr<CxMethodAttr>() ? 1 : 0;
     const IdentifierInfo *Expected =
-        BadArg < Fn->getNumParams()
-            ? (Fn->getParamDecl(BadArg)->hasAttr<CxArgumentLabelAttr>()
-                   ? Fn->getParamDecl(BadArg)
+        BadArg + Self < Fn->getNumParams()
+            ? (Fn->getParamDecl(BadArg + Self)
+                       ->hasAttr<CxArgumentLabelAttr>()
+                   ? Fn->getParamDecl(BadArg + Self)
                          ->getAttr<CxArgumentLabelAttr>()
                          ->getLabel()
                    : nullptr)

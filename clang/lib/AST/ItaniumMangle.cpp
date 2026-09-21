@@ -1787,16 +1787,28 @@ void CXXNameMangler::mangleCxName(const FunctionDecl *FD,
   const auto *A = FD->getAttr<CxLinkageAttr>();
   SmallString<64> Name;
   llvm::raw_svector_ostream NameOS(Name);
-  NameOS << "_Cx0$" << A->getModule()->getName() << '$' << II->getName();
+  NameOS << "_Cx0$";
+  if (const IdentifierInfo *M = A->getModule())
+    NameOS << M->getName();
+  NameOS << '$';
+
+  // A method needs no record name of its own: it is nested in its record, so
+  // the enclosing qualified name already carries it.
+  NameOS << II->getName();
 
   // Argument labels are part of a Cx entity's identity, so they belong in the
   // symbol. The section is written only when at least one parameter has a
-  // label, which keeps a wholly unlabeled function's symbol unchanged.
-  if (llvm::any_of(FD->parameters(), [](const ParmVarDecl *PVD) {
+  // label, which keeps a wholly unlabeled function's symbol unchanged. A
+  // method's implicit receiver is not a written parameter and has no place
+  // in the list.
+  ArrayRef<ParmVarDecl *> Params = FD->parameters();
+  if (FD->hasAttr<CxMethodAttr>() && !Params.empty())
+    Params = Params.drop_front();
+  if (llvm::any_of(Params, [](const ParmVarDecl *PVD) {
         return PVD->hasAttr<CxArgumentLabelAttr>();
       })) {
     NameOS << '$';
-    for (const ParmVarDecl *PVD : FD->parameters()) {
+    for (const ParmVarDecl *PVD : Params) {
       if (const auto *L = PVD->getAttr<CxArgumentLabelAttr>())
         NameOS << L->getLabel()->getName();
       else

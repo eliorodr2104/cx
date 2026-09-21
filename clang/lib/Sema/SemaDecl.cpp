@@ -18733,6 +18733,13 @@ Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK, SourceLocation KWLoc,
                   // Carry on and handle it like a normal definition. We'll
                   // skip starting the definition later.
 
+                } else if (SkipBody && isCxContinuationOf(Def, NameLoc)) {
+                  // Cx: a block naming an already complete owned type is a
+                  // continuation that implements its members. It adds no
+                  // storage, so the type's definition is left alone.
+                  SkipBody->CxContinuation = true;
+                  SkipBody->Previous = Def;
+                  return Def;
                 } else if (!IsExplicitSpecializationAfterInstantiation) {
                   // A redeclaration in function prototype scope in C isn't
                   // visible elsewhere, so merely issue a warning.
@@ -19353,10 +19360,10 @@ ExprResult Sema::VerifyBitField(SourceLocation FieldLoc,
 }
 
 Decl *Sema::ActOnField(Scope *S, Decl *TagD, SourceLocation DeclStart,
-                       Declarator &D, Expr *BitfieldWidth) {
-  FieldDecl *Res = HandleField(S, cast_if_present<RecordDecl>(TagD), DeclStart,
-                               D, BitfieldWidth,
-                               /*InitStyle=*/ICIS_NoInit, AS_public);
+                       Declarator &D, Expr *BitfieldWidth, bool HasDefault) {
+  FieldDecl *Res = HandleField(
+      S, cast_if_present<RecordDecl>(TagD), DeclStart, D, BitfieldWidth,
+      HasDefault ? ICIS_CopyInit : ICIS_NoInit, AS_public);
   return Res;
 }
 
@@ -19578,8 +19585,11 @@ FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
   // C++11 [class.union]p8 (DR1460):
   //   At most one variant member of a union may have a
   //   brace-or-equal-initializer.
+  // The union variant-member rule is a C++ one; a Cx field default in a C
+  // record has no union counterpart to check.
   if (InitStyle != ICIS_NoInit)
-    checkDuplicateDefaultInit(*this, cast<CXXRecordDecl>(Record), Loc);
+    if (auto *CXXRecord = dyn_cast<CXXRecordDecl>(Record))
+      checkDuplicateDefaultInit(*this, CXXRecord, Loc);
 
   FieldDecl *NewFD = FieldDecl::Create(Context, Record, TSSL, Loc, II, T, TInfo,
                                        BitWidth, Mutable, InitStyle);

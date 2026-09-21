@@ -1020,7 +1020,7 @@ def AnalyzerNoReturn : InheritableAttr {
 /// implicitly by Sema; there is no user spelling.
 def CxLinkage : InheritableAttr {
   let Spellings = [];
-  let Args = [IdentifierArgument<"Module">];
+  let Args = [IdentifierArgument<"Module", /*opt=*/1>];
   let Subjects = SubjectList<[Function], ErrorDiag>;
   let SemaHandler = 0;
   let Documentation = [InternalOnly];
@@ -1029,6 +1029,26 @@ def CxLinkage : InheritableAttr {
 /// The external argument label of a Cx parameter. The parameter's own name is
 /// the local name used inside the body. Added implicitly by Sema; there is no
 /// user spelling.
+/// Marks a Cx struct method: an associated function whose first parameter is
+/// the implicit `self` receiver. It adds no storage to the type and no
+/// per-instance pointer. Added implicitly by Sema; there is no user spelling.
+/// The Cx access of a struct member: read access in Read, write access in
+/// Write, each 0 public / 1 internal / 2 private. Added implicitly by Sema.
+def CxAccess : InheritableAttr {
+  let Spellings = [];
+  let Args = [UnsignedArgument<"Read">, UnsignedArgument<"Write">];
+  let Subjects = SubjectList<[Field, Function], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
+def CxMethod : InheritableAttr {
+  let Spellings = [];
+  let Subjects = SubjectList<[Function], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
 def CxArgumentLabel : InheritableAttr {
   let Spellings = [];
   let Args = [IdentifierArgument<"Label">];

@@ -887,6 +887,13 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
                                NotPrimaryExpression);
 
   case tok::identifier:
+    // Cx: a struct type name followed by '(' is generated construction, not a
+    // call. A type name in expression position is not valid C.
+    if (getLangOpts().CX && NextToken().is(tok::l_paren) &&
+        Actions.getCxConstructionType(Tok.getIdentifierInfo(),
+                                      Tok.getLocation(), getCurScope()))
+      return ParseCxConstructionExpression();
+    goto ParseIdentifier;
   ParseIdentifier: {    // primary-expression: identifier
                         // unqualified-id: identifier
                         // constant: enumeration-constant
@@ -1288,6 +1295,10 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
     break;
 
   case tok::annot_typename:
+    // Cx: `Size(width: 80, height: 40)` constructs a struct value. A type name
+    // followed by '(' is not a C expression, so nothing is reinterpreted.
+    if (getLangOpts().CX && NextToken().is(tok::l_paren))
+      return ParseCxConstructionExpression();
     if (isStartOfObjCClassMessageMissingOpenBracket()) {
       TypeResult Type = getTypeAnnotation(Tok);
 

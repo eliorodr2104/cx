@@ -1050,6 +1050,8 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     return ExprError();
 
   if (FieldDecl *FD = dyn_cast<FieldDecl>(MemberDecl)) {
+    if (CheckCxMemberAccess(FD, MemberLoc, /*ForWrite=*/false))
+      return ExprError();
     if (ConvertBaseExprToGLValue())
       return ExprError();
     return BuildFieldReferenceExpr(BaseExpr, IsArrow, OpLoc, SS, FD, FoundDecl,
@@ -1672,9 +1674,12 @@ static ExprResult LookupMemberExpr(Sema &S, LookupResult &R,
   if (const PointerType *Ptr = BaseType->getAs<PointerType>()) {
     if (!IsArrow && Ptr->getPointeeType()->isRecordType() &&
         MemberName.getNameKind() != DeclarationName::CXXDestructorName) {
-      S.Diag(OpLoc, diag::err_typecheck_member_reference_suggestion)
-          << BaseType << int(IsArrow) << BaseExpr.get()->getSourceRange()
-          << FixItHint::CreateReplacement(OpLoc, "->");
+      // Cx permits `self.field`. That is the implicit receiver only; it does
+      // not establish a general `.` shorthand for raw pointers.
+      if (!S.isCxSelfReference(BaseExpr.get()))
+        S.Diag(OpLoc, diag::err_typecheck_member_reference_suggestion)
+            << BaseType << int(IsArrow) << BaseExpr.get()->getSourceRange()
+            << FixItHint::CreateReplacement(OpLoc, "->");
 
       if (S.isSFINAEContext())
         return ExprError();
@@ -1735,6 +1740,28 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
                          NameInfo, TemplateArgs);
 
   bool IsArrow = (OpKind == tok::arrow);
+
+  // Cx: a method is an associated function held by the record, so ordinary
+  // member lookup does not reach it. Build the reference here; the call that
+  // must follow turns it into a call with the receiver's address.
+  if (getLangOpts().CX && !SS.isSet() && Base && NameInfo.getName().isIdentifier()) {
+    QualType BaseTy = Base->getType();
+    if (IsArrow || isCxSelfReference(Base))
+      BaseTy = BaseTy->isPointerType() ? BaseTy->getPointeeType() : QualType();
+    const RecordType *RT =
+        BaseTy.isNull() ? nullptr : BaseTy->getAs<RecordType>();
+    if (RT)
+      if (FunctionDecl *M = LookupCxMethod(RT->getDecl(), NameInfo.getName())) {
+        // Access is checked on the method the call selects, because several
+        // may share this name.
+        bool ThroughPointer = IsArrow || isCxSelfReference(Base);
+        return MemberExpr::Create(
+            Context, Base, ThroughPointer, OpLoc, NestedNameSpecifierLoc(),
+            SourceLocation(), M, DeclAccessPair::make(M, M->getAccess()),
+            NameInfo, /*TemplateArgs=*/nullptr, M->getType(), VK_LValue,
+            OK_Ordinary, NOUR_None);
+      }
+  }
 
   if (getLangOpts().HLSL && IsArrow)
     return ExprError(Diag(OpLoc, diag::err_hlsl_operator_unsupported) << 2);

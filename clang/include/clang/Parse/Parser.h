@@ -2071,6 +2071,25 @@ private:
   /// list. The caller has already consumed the '('.
   bool isCxCompoundNameSuffix();
 
+  /// Parse the body of a Cx struct method whose declaration is \p MethodDecl,
+  /// from tokens cached while the record was still incomplete.
+  void ParseCxMethodBody(Decl *MethodDecl, CachedTokens &Toks);
+
+  /// Parse a Cx continuation body: a block reopening the already complete
+  /// record \p RD to implement its members. It may not add stored fields.
+  void ParseCxContinuationBody(RecordDecl *RD);
+
+  /// Consume any Cx access specifiers at the start of a struct member:
+  /// `public`, `internal`, `private`, each optionally as `(set)`. Returns
+  /// false and consumes nothing when the next tokens are not specifiers.
+  bool ParseCxAccessSpecifiers(std::optional<unsigned> &Read,
+                               std::optional<unsigned> &Write,
+                               SourceLocation &Loc);
+
+  /// Parse `TypeName(field: value, ...)`, the generated memberwise
+  /// construction of a Cx struct. The current token is the type annotation.
+  ExprResult ParseCxConstructionExpression();
+
   /// isTypeSpecifierQualifier - Return true if the current token could be the
   /// start of a specifier-qualifier-list.
   bool isTypeSpecifierQualifier(const Token &Tok);

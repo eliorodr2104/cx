@@ -814,6 +814,19 @@ void InitListChecker::FillInEmptyInitForField(unsigned Init, FieldDecl *Field,
       if (VerifyOnly)
         return;
 
+      // Cx: a field default in a C record is an ordinary expression. There is
+      // no `this` to bind, so it is used directly rather than through the
+      // C++ default-member-initializer machinery.
+      if (!SemaRef.getLangOpts().CPlusPlus) {
+        if (Expr *Default = Field->getInClassInitializer()) {
+          if (Init < NumInits)
+            ILE->setInit(Init, Default);
+          else
+            ILE->updateInit(SemaRef.Context, Init, Default);
+          return;
+        }
+      }
+
       ExprResult DIE;
       {
         // Enter a default initializer rebuild context, then we can support
@@ -2362,6 +2375,19 @@ void InitListChecker::CheckStructUnionTypes(
     InitListExpr *StructuredList, unsigned &StructuredIndex,
     bool TopLevelObject) {
   const RecordDecl *RD = DeclType->getAsRecordDecl();
+
+  // Cx: initializing a record writes its fields, so it needs the same write
+  // access a field assignment needs. Without this an aggregate initializer
+  // would be a way around every access restriction on the type.
+  if (!VerifyOnly && SemaRef.getLangOpts().CX &&
+      !SemaRef.CxBuildingConstruction) {
+    for (const FieldDecl *FD : RD->fields())
+      if (SemaRef.CheckCxMemberAccess(FD, IList->getBeginLoc(),
+                                      /*ForWrite=*/true)) {
+        hadError = true;
+        return;
+      }
+  }
 
   // If the record is invalid, some of it's members are invalid. To avoid
   // confusion, we forgo checking the initializer for the entire record.

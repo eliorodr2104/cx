@@ -2704,6 +2704,51 @@ def note_ovl_candidate_cx_label : Note<
   "candidate function not viable: "
   "%select{expects argument label '%1'|takes no argument label}0 "
   "for argument %2">;
+def err_cx_member_inaccessible : Error<
+  "%select{|writing to }2%select{public|internal|private}1 member %0 is not "
+  "permitted here">;
+def note_cx_member_declared_here : Note<
+  "%select{public|internal|private}0 member %1 declared here">;
+def err_cx_access_wider_write : Error<
+  "write access cannot be broader than read access">;
+def err_cx_access_repeated : Error<
+  "%select{read|write}0 access is already specified">;
+
+def err_cx_construction_not_struct : Error<
+  "generated construction is only available for a struct, not %0">;
+def err_cx_construction_incomplete : Error<
+  "generated construction needs a complete type; %0 is incomplete">;
+def err_cx_construction_unnamed_field : Error<
+  "%0 has a field with no name, so it has no generated construction">;
+def err_cx_construction_missing_field : Error<
+  "missing value for field %0 in construction of %1; it has no default">;
+def err_cx_field_default_not_field : Error<
+  "only a stored field can have a default value">;
+def err_cx_construction_unexpected_arg : Error<
+  "too many values in construction of %0">;
+def err_cx_construction_label : Error<
+  "construction of %0 expects the field label '%1' here">;
+def note_cx_construction_field : Note<
+  "field %0 declared here">;
+
+def err_cx_continuation_adds_field : Error<
+  "a continuation of %0 cannot add a stored field">;
+def note_cx_primary_definition : Note<
+  "primary definition of %0 is here">;
+def err_cx_method_redefinition : Error<
+  "redefinition of Cx method %0">;
+
+def err_cx_method_not_called : Error<
+  "reference to Cx method %0 must be a call">;
+def err_cx_method_needs_prototype : Error<
+  "a Cx method needs a parameter list">;
+def err_cx_method_name : Error<
+  "a Cx method needs an ordinary name">;
+def err_cx_mutating_on_const : Error<
+  "cannot call mutating method %0 on a constant value of type %1">;
+def note_cx_mark_non_mutating : Note<
+  "mark the method '~mutating' if it does not modify the receiver">;
+
 def err_cx_no_function_with_labels : Error<
   "no function named %0 has the argument labels '%1'">;
 def err_cx_compound_name_not_function : Error<

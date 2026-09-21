@@ -16,3 +16,9 @@ one slice of a roadmap row that is being implemented in stages; a dotted number
 - [M3a — Cx linkage and experimental mangling](M3a.md) — **Completed**
 - [M3b — Argument labels](M3b.md) — **Completed**
 - [M3c — Overload lookup and compound references](M3c.md) — **Completed**
+- [M4a — Struct methods, `self` and `~mutating`](M4a.md) — **Completed**
+- [M4b — Continuations](M4b.md) — **Completed**
+- [M4c — Access control](M4c.md) — **Completed**
+- [M4d — Generated memberwise construction](M4d.md) — **Completed**
+- [M4e — Declaration-site field defaults](M4e.md) — **Completed**
+- [M4.1 — Close the access and method-call holes](M4.1.md) — **Completed**

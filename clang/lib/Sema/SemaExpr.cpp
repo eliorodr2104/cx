@@ -537,6 +537,17 @@ ExprResult Sema::DefaultFunctionArrayConversion(Expr *E, bool Diagnose) {
         if (!checkAddressOfFunctionIsAvailable(FD, Diagnose, E->getExprLoc()))
           return ExprError();
 
+    // Cx: a method reference is only ever the callee of a call. It is bound to
+    // a receiver, so it cannot decay to a plain function pointer.
+    if (auto *ME = dyn_cast<MemberExpr>(E->IgnoreParenCasts()))
+      if (auto *M = dyn_cast<FunctionDecl>(ME->getMemberDecl()))
+        if (M->hasAttr<CxMethodAttr>()) {
+          if (Diagnose)
+            Diag(E->getExprLoc(), diag::err_cx_method_not_called)
+                << M << E->getSourceRange();
+          return ExprError();
+        }
+
     E = ImpCastExprToType(E, Context.getPointerType(Ty),
                           CK_FunctionToPointerDecay).get();
   } else if (Ty->isArrayType()) {
@@ -2920,6 +2931,14 @@ ExprResult Sema::ActOnIdExpression(Scope *S, CXXScopeSpec &SS,
   if (R.empty() && SS.isEmpty() && !HasTrailingLParen && II &&
       getLangOpts().CX && II->isStr("null"))
     return ActOnCXXNullPtrLiteral(NameLoc);
+
+  // Cx: inside a method body an unqualified name may be a field or another
+  // method of the receiver. A local parameter or binding shadows it, which is
+  // exactly what an empty lookup has already established.
+  if (R.empty() && SS.isEmpty() && II && getLangOpts().CX)
+    if (ExprResult Recv = BuildCxImplicitSelfMemberRef(NameInfo, S);
+        Recv.isUsable() || Recv.isInvalid())
+      return Recv;
 
   // This could be an implicitly declared function reference if the language
   // mode allows it as a feature.
@@ -6831,6 +6850,14 @@ ExprResult Sema::BuildCallExpr(Scope *Scope, Expr *Fn, SourceLocation LParenLoc,
 
   if (CheckArgsForPlaceholders(ArgExprs))
     return ExprError();
+
+  // Cx: `base.method(args)` calls the associated function with the receiver's
+  // address. The AST is an ordinary call, because that is what a method is.
+  if (getLangOpts().CX)
+    if (auto *ME = dyn_cast<MemberExpr>(Fn->IgnoreParens()))
+      if (auto *M = dyn_cast<FunctionDecl>(ME->getMemberDecl()))
+        if (M->hasAttr<CxMethodAttr>())
+          return BuildCxMethodCall(Fn, LParenLoc, ArgExprs, RParenLoc);
 
   // The result of __builtin_counted_by_ref cannot be used as a function
   // argument. It allows leaking and modification of bounds safety information.
@@ -14321,6 +14348,14 @@ static bool CheckForModifiableLvalue(Expr *E, SourceLocation Loc, Sema &S) {
 
   S.CheckShadowingDeclModification(E, Loc);
 
+  // Cx write access covers every modification that reaches here: assignment,
+  // compound assignment and increment alike.
+  if (S.getLangOpts().CX)
+    if (auto *ME = dyn_cast<MemberExpr>(E->IgnoreParenImpCasts()))
+      if (S.CheckCxMemberAccess(ME->getMemberDecl(), ME->getMemberLoc(),
+                                /*ForWrite=*/true))
+        return true;
+
   SourceLocation OrigLoc = Loc;
   Expr::isModifiableLvalueResult IsLV = E->isModifiableLvalue(S.Context,
                                                               &Loc);
@@ -14946,6 +14981,16 @@ bool Sema::CheckUseOfCXXMethodAsAddressOfOperand(SourceLocation OpLoc,
 }
 
 QualType Sema::CheckAddressOfOperand(ExprResult &OrigOp, SourceLocation OpLoc) {
+  // Cx: a mutable pointer to a member is a way to write it, so it needs the
+  // member's write access. Restricting `=` but handing out an unrestricted
+  // pointer to the same field would not enforce the intended API.
+  if (getLangOpts().CX)
+    if (auto *ME = dyn_cast<MemberExpr>(OrigOp.get()->IgnoreParens()))
+      if (!ME->getType().isConstQualified() &&
+          CheckCxMemberAccess(ME->getMemberDecl(), ME->getMemberLoc(),
+                              /*ForWrite=*/true))
+        return QualType();
+
   if (const BuiltinType *PTy = OrigOp.get()->getType()->getAsPlaceholderType()){
     if (PTy->getKind() == BuiltinType::Overload) {
       Expr *E = OrigOp.get()->IgnoreParens();

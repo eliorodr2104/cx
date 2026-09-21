@@ -1464,6 +1464,14 @@ LinkageInfo LinkageComputer::computeLVForDecl(const NamedDecl *D,
   if (D->hasAttr<InternalLinkageAttr>())
     return LinkageInfo::internal();
 
+  // A Cx struct method is an associated function held by its record, not a
+  // C++ class member. It has the linkage a file-scope function would have, so
+  // that a method declared in a header links to a definition elsewhere.
+  if (const auto *FD = dyn_cast<FunctionDecl>(D))
+    if (FD->hasAttr<CxMethodAttr>())
+      return FD->getStorageClass() == SC_Static ? LinkageInfo::internal()
+                                                : LinkageInfo::external();
+
   // Objective-C: treat all Objective-C declarations as having external
   // linkage.
   switch (D->getKind()) {
@@ -2212,7 +2220,10 @@ static bool isDeclExternC(const T &D) {
   // language linkage or no language linkage.
   const DeclContext *DC = D.getDeclContext();
   if (DC->isRecord()) {
-    assert(D.getASTContext().getLangOpts().CPlusPlus);
+    // A Cx struct method also lives in its record and has Cx linkage, never C
+    // language linkage.
+    assert(D.getASTContext().getLangOpts().CPlusPlus ||
+           D.getASTContext().getLangOpts().CX);
     return false;
   }
 

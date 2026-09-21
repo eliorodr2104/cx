@@ -353,6 +353,9 @@ struct SkipBodyInfo {
   SkipBodyInfo() = default;
   bool ShouldSkip = false;
   bool CheckSameAsPrevious = false;
+  /// This block reopens an already complete Cx type to implement its members;
+  /// it is a continuation, not a second definition. \c Previous is the type.
+  bool CxContinuation = false;
   NamedDecl *Previous = nullptr;
   NamedDecl *New = nullptr;
 };
@@ -4232,6 +4235,75 @@ public:
                                     SourceLocation LParenLoc,
                                     SourceLocation RParenLoc);
 
+  /// Build a Cx struct method: an associated function in \p TagD whose first
+  /// parameter is the implicit `self` receiver. \p NonMutating gives `self` a
+  /// const pointee, which is what `~mutating` promises.
+  Decl *ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
+                                bool NonMutating);
+
+  /// The Cx method \p Name of the record \p RD, or null.
+  FunctionDecl *LookupCxMethod(const RecordDecl *RD, DeclarationName Name);
+
+  /// Whether a block naming the already complete type \p Def, written at
+  /// \p Loc, reopens it as a Cx continuation rather than redefining it.
+  bool isCxContinuationOf(const TagDecl *Def, SourceLocation Loc);
+
+  /// Cx member access levels, ordered from least to most restrictive.
+  enum CxAccessLevel { CxAccess_public = 0, CxAccess_internal, CxAccess_private };
+
+  /// Record the access of a Cx struct member. \p Read and \p Write are the
+  /// written levels; either may be absent, and the defaults depend on whether
+  /// the member is introduced by a continuation.
+  void AddCxAccess(Decl *Member, std::optional<unsigned> Read,
+                   std::optional<unsigned> Write, bool InContinuation,
+                   SourceLocation Loc);
+
+  /// Diagnose an inaccessible use of a Cx struct member at \p Loc.
+  /// \p ForWrite selects the write access level. Returns true on error.
+  bool CheckCxMemberAccess(const NamedDecl *Member, SourceLocation Loc,
+                           bool ForWrite);
+
+  /// Build the generated memberwise construction of \p Ty: one labelled value
+  /// per stored field, in declaration order.
+  /// Set while a Cx construction expression builds its initializer list. The
+  /// generic access check on record initialization stands down there, because
+  /// \c ActOnCxConstruction has already checked exactly the fields the call
+  /// writes -- a field taking its declared default is not one of them.
+  bool CxBuildingConstruction = false;
+
+  /// Record \p Init as the declaration-site default of the field \p Field.
+  void AddCxFieldDefault(Decl *Field, SourceLocation EqualLoc,
+                         ExprResult Init);
+
+  /// The record type \p II names here, or null when it names something else.
+  /// Used to tell `Size(...)` construction from an ordinary call.
+  ParsedType getCxConstructionType(const IdentifierInfo *II,
+                                   SourceLocation Loc, Scope *S);
+
+  ExprResult ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
+                                 SourceLocation LParenLoc,
+                                 ArrayRef<const IdentifierInfo *> Labels,
+                                 ArrayRef<SourceLocation> LabelLocs,
+                                 MultiExprArg Args, SourceLocation RParenLoc);
+
+  /// Whether \p E refers to the implicit `self` receiver of a Cx method,
+  /// which is the one pointer that accepts `.` member access.
+  bool isCxSelfReference(const Expr *E);
+
+  /// The Cx method whose body is being parsed, or null.
+  FunctionDecl *getCurrentCxMethod();
+
+  /// Turn `base.method(args)` into a call of the associated function with the
+  /// receiver's address. \p Callee is a MemberExpr naming a Cx method.
+  ExprResult BuildCxMethodCall(Expr *Callee, SourceLocation LParenLoc,
+                               MultiExprArg Args, SourceLocation RParenLoc);
+
+  /// Inside a Cx method body, resolve an unqualified name against the
+  /// receiver. Returns an unusable, valid result when the name is not a
+  /// member, so the caller keeps its ordinary diagnostics.
+  ExprResult BuildCxImplicitSelfMemberRef(const DeclarationNameInfo &NameInfo,
+                                          Scope *S);
+
   /// The argument labels written at the call currently being resolved, one
   /// entry per argument and null where the call wrote none. Empty outside a
   /// Cx call, which is what makes the label filter inert everywhere else.
@@ -4442,8 +4514,11 @@ public:
 
   /// ActOnField - Each field of a C struct/union is passed into this in order
   /// to create a FieldDecl object for it.
+  /// \p HasDefault reserves room for a Cx declaration-site default, which
+  /// \c AddCxFieldDefault fills in once the initializer is parsed.
   Decl *ActOnField(Scope *S, Decl *TagD, SourceLocation DeclStart,
-                   Declarator &D, Expr *BitfieldWidth);
+                   Declarator &D, Expr *BitfieldWidth,
+                   bool HasDefault = false);
 
   /// HandleField - Analyze a field of a C struct or a C++ data member.
   FieldDecl *HandleField(Scope *S, RecordDecl *TagD, SourceLocation DeclStart,

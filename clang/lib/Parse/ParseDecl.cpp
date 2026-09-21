@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/PrettyDeclStackTrace.h"
@@ -4860,6 +4861,15 @@ void Parser::ParseStructDeclaration(
     if (Field)
       DistributeCLateParsedAttrs(Field, LateFieldAttrs);
 
+    // Cx: a field may carry a declaration-site default. A field with one is
+    // not required at construction, so it is not part of the construction
+    // surface. `= ...` on a member is not valid C.
+    if (getLangOpts().CX && Tok.is(tok::equal)) {
+      SourceLocation EqualLoc = ConsumeToken();
+      ExprResult Init = ParseAssignmentExpression();
+      Actions.AddCxFieldDefault(Field, EqualLoc, Init);
+    }
+
     // If we don't have a comma, it is either the end of the list (a ';')
     // or an error, bail out.
     if (!TryConsumeToken(tok::comma, CommaLoc))
@@ -4951,6 +4961,9 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
   LateParsedAttrList LateFieldAttrs(/*PSoon=*/true,
                                     /*LateAttrParseExperimentalExtOnly=*/true);
 
+  // Cx method bodies, cached until the record is complete.
+  SmallVector<std::pair<Decl *, CachedTokens>, 4> CxMethodBodies;
+
   // While we still have something to read, read the declarations in the struct.
   while (!tryParseMisplacedModuleImport() && Tok.isNot(tok::r_brace) &&
          Tok.isNot(tok::eof)) {
@@ -5002,13 +5015,49 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
       continue;
     }
 
+    // Cx: access specifiers, then `~mutating`, then the member itself.
+    std::optional<unsigned> AccessRead, AccessWrite;
+    SourceLocation AccessLoc;
+    ParseCxAccessSpecifiers(AccessRead, AccessWrite, AccessLoc);
+
+    // Cx: `~mutating` promises that the receiver's stored value is not
+    // modified, which is what lets the method be called on a constant value.
+    bool NonMutating = false;
+    if (getLangOpts().CX && Tok.is(tok::tilde) &&
+        NextToken().is(tok::identifier) &&
+        NextToken().getIdentifierInfo()->isStr("mutating")) {
+      ConsumeToken(); // '~'
+      ConsumeToken(); // 'mutating'
+      NonMutating = true;
+    }
+
     if (!Tok.is(tok::at)) {
+      Decl *CxMethod = nullptr;
       auto CFieldCallback = [&](ParsingFieldDeclarator &FD) -> Decl * {
+        // Cx: a function declarator inside a struct declares a method, an
+        // associated function with a `self` receiver that adds no storage.
+        // C rejects a function member outright, so nothing valid changes.
+        if (getLangOpts().CX && FD.D.isFunctionDeclarator()) {
+          CxMethod = Actions.ActOnCxMethodDeclarator(getCurScope(), TagDecl,
+                                                     FD.D, NonMutating);
+          Actions.AddCxAccess(CxMethod, AccessRead, AccessWrite,
+                              /*InContinuation=*/false,
+                              AccessLoc.isValid() ? AccessLoc
+                                                  : FD.D.getIdentifierLoc());
+          FD.complete(CxMethod);
+          return CxMethod;
+        }
+
         // Install the declarator into the current TagDecl.
-        Decl *Field =
-            Actions.ActOnField(getCurScope(), TagDecl,
-                               FD.D.getDeclSpec().getSourceRange().getBegin(),
-                               FD.D, FD.BitfieldSize);
+        Decl *Field = Actions.ActOnField(
+            getCurScope(), TagDecl,
+            FD.D.getDeclSpec().getSourceRange().getBegin(), FD.D,
+            FD.BitfieldSize, /*HasDefault=*/getLangOpts().CX &&
+                                 Tok.is(tok::equal));
+        Actions.AddCxAccess(Field, AccessRead, AccessWrite,
+                            /*InContinuation=*/false,
+                            AccessLoc.isValid() ? AccessLoc
+                                                : FD.D.getIdentifierLoc());
         FD.complete(Field);
         return Field;
       };
@@ -5016,6 +5065,18 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
       // Parse all the comma separated declarators.
       ParsingDeclSpec DS(*this);
       ParseStructDeclaration(DS, CFieldCallback, &LateFieldAttrs);
+
+      // A method may be defined where it is declared. The record is not
+      // complete yet, so cache the body and replay it below.
+      if (CxMethod && Tok.is(tok::l_brace)) {
+        CxMethodBodies.emplace_back(CxMethod, CachedTokens());
+        CachedTokens &Toks = CxMethodBodies.back().second;
+        Toks.push_back(Tok);
+        ConsumeBrace();
+        ConsumeAndStoreUntil(tok::r_brace, Toks, /*StopAtSemi=*/false,
+                             /*ConsumeFinalToken=*/true);
+        continue;
+      }
     } else { // Handle @defs
       ConsumeToken();
       if (!Tok.isObjCAtKeyword(tok::objc_defs)) {
@@ -5062,6 +5123,10 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
 
   Actions.ActOnFields(getCurScope(), RecordLoc, TagDecl, FieldDecls,
                       T.getOpenLocation(), T.getCloseLocation(), attrs);
+
+  // The record is complete now, so a method body can see every field.
+  for (auto &Pending : CxMethodBodies)
+    ParseCxMethodBody(Pending.first, Pending.second);
 
   // Late parse field attributes if necessary.
   ParseLexedAttributeList(LateFieldAttrs, /*D=*/nullptr, /*EnterScope=*/false,
@@ -5849,6 +5914,221 @@ bool Parser::isCxInferenceSpecifier(const Token &Tok) {
   if (!II->isStr("var") && !II->isStr("let"))
     return false;
   return Actions.isCxContextualKeyword(II, getCurScope());
+}
+
+ExprResult Parser::ParseCxConstructionExpression() {
+  assert(NextToken().is(tok::l_paren) && "not at a construction expression");
+  SourceLocation TypeLoc = Tok.getLocation();
+  ParsedType Ty;
+  if (Tok.is(tok::annot_typename)) {
+    TypeResult Annot = getTypeAnnotation(Tok);
+    if (!Annot.isInvalid())
+      Ty = Annot.get();
+    ConsumeAnnotationToken();
+  } else {
+    Ty = Actions.getCxConstructionType(Tok.getIdentifierInfo(), TypeLoc,
+                                       getCurScope());
+    ConsumeToken();
+  }
+
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  if (T.consumeOpen())
+    return ExprError();
+
+  ExprVector Args;
+  SmallVector<const IdentifierInfo *, 8> Labels;
+  SmallVector<SourceLocation, 8> LabelLocs;
+  if (Tok.isNot(tok::r_paren)) {
+    if (ParseExpressionList(Args, [&] {
+          LabelLocs.push_back(Tok.getLocation());
+          if (Tok.is(tok::identifier) && NextToken().is(tok::colon)) {
+            Labels.push_back(Tok.getIdentifierInfo());
+            ConsumeToken(); // the field label
+            ConsumeToken(); // ':'
+          } else {
+            Labels.push_back(nullptr);
+          }
+        })) {
+      SkipUntil(tok::r_paren, StopAtSemi);
+      return ExprError();
+    }
+  }
+
+  SourceLocation RParenLoc = Tok.getLocation();
+  if (T.consumeClose())
+    return ExprError();
+  if (!Ty || Labels.size() != Args.size())
+    return ExprError();
+
+  return Actions.ActOnCxConstruction(Ty, TypeLoc, T.getOpenLocation(), Labels,
+                                     LabelLocs, Args, RParenLoc);
+}
+
+bool Parser::ParseCxAccessSpecifiers(std::optional<unsigned> &Read,
+                                     std::optional<unsigned> &Write,
+                                     SourceLocation &Loc) {
+  if (!getLangOpts().CX)
+    return false;
+
+  bool Any = false;
+  while (Tok.is(tok::identifier)) {
+    const IdentifierInfo *II = Tok.getIdentifierInfo();
+    std::optional<unsigned> Level;
+    if (II->isStr("public"))
+      Level = Sema::CxAccess_public;
+    else if (II->isStr("internal"))
+      Level = Sema::CxAccess_internal;
+    else if (II->isStr("private"))
+      Level = Sema::CxAccess_private;
+    if (!Level)
+      break;
+
+    // `private` alone is a level; `private(set)` restricts writing only. An
+    // identifier in this position is not valid C either way.
+    bool IsSetter = NextToken().is(tok::l_paren) &&
+                    GetLookAheadToken(2).is(tok::identifier) &&
+                    GetLookAheadToken(2).getIdentifierInfo()->isStr("set") &&
+                    GetLookAheadToken(3).is(tok::r_paren);
+    if (!IsSetter && !NextToken().isOneOf(tok::identifier, tok::kw_int,
+                                          tok::kw_char, tok::kw_short,
+                                          tok::kw_long, tok::kw_float,
+                                          tok::kw_double, tok::kw_unsigned,
+                                          tok::kw_signed, tok::kw_void,
+                                          tok::kw_struct, tok::kw_union,
+                                          tok::kw_enum, tok::kw_const,
+                                          tok::kw__Bool, tok::tilde))
+      break;
+
+    if (!Any)
+      Loc = Tok.getLocation();
+    Any = true;
+    ConsumeToken(); // the level
+
+    std::optional<unsigned> &Slot = IsSetter ? Write : Read;
+    if (Slot)
+      Diag(Tok, diag::err_cx_access_repeated) << (IsSetter ? 1 : 0);
+    Slot = Level;
+
+    if (IsSetter) {
+      ConsumeParen();  // '('
+      ConsumeToken();  // 'set'
+      ConsumeParen();  // ')'
+    }
+  }
+  return Any;
+}
+
+void Parser::ParseCxContinuationBody(RecordDecl *RD) {
+  // The record is already complete. Members are added to it directly; there is
+  // no ActOnTagStartDefinition and no ActOnFields, so the layout cannot change.
+  BalancedDelimiterTracker T(*this, tok::l_brace);
+  if (T.consumeOpen())
+    return;
+
+  ParseScope StructScope(this, Scope::ClassScope | Scope::DeclScope);
+  // Members are declared in the record, so it has to be the current context,
+  // exactly as it is while the primary definition is being parsed.
+  Sema::ContextRAII SavedContext(Actions, RD);
+
+  while (Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)) {
+    if (TryConsumeToken(tok::semi))
+      continue;
+
+    std::optional<unsigned> AccessRead, AccessWrite;
+    SourceLocation AccessLoc;
+    ParseCxAccessSpecifiers(AccessRead, AccessWrite, AccessLoc);
+
+    bool NonMutating = false;
+    if (Tok.is(tok::tilde) && NextToken().is(tok::identifier) &&
+        NextToken().getIdentifierInfo()->isStr("mutating")) {
+      ConsumeToken();
+      ConsumeToken();
+      NonMutating = true;
+    }
+
+    Decl *CxMethod = nullptr;
+    auto MemberCallback = [&](ParsingFieldDeclarator &FD) -> Decl * {
+      if (FD.D.isFunctionDeclarator()) {
+        CxMethod = Actions.ActOnCxMethodDeclarator(getCurScope(), RD, FD.D,
+                                                   NonMutating);
+        Actions.AddCxAccess(CxMethod, AccessRead, AccessWrite,
+                            /*InContinuation=*/true,
+                            AccessLoc.isValid() ? AccessLoc
+                                                : FD.D.getIdentifierLoc());
+        FD.complete(CxMethod);
+        return CxMethod;
+      }
+      Diag(FD.D.getIdentifierLoc(), diag::err_cx_continuation_adds_field) << RD;
+      Diag(RD->getLocation(), diag::note_cx_primary_definition) << RD;
+      FD.complete(nullptr);
+      return nullptr;
+    };
+
+    ParsingDeclSpec DS(*this);
+    ParseStructDeclaration(DS, MemberCallback, /*LateFieldAttrs=*/nullptr);
+
+    if (CxMethod && Tok.is(tok::l_brace)) {
+      CachedTokens Toks;
+      Toks.push_back(Tok);
+      ConsumeBrace();
+      ConsumeAndStoreUntil(tok::r_brace, Toks, /*StopAtSemi=*/false,
+                           /*ConsumeFinalToken=*/true);
+      ParseCxMethodBody(CxMethod, Toks);
+      continue;
+    }
+
+    if (TryConsumeToken(tok::semi))
+      continue;
+    if (Tok.is(tok::r_brace)) {
+      ExpectAndConsume(tok::semi, diag::ext_expected_semi_decl_list);
+      break;
+    }
+    ExpectAndConsume(tok::semi, diag::err_expected_semi_decl_list);
+    SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
+    TryConsumeToken(tok::semi);
+  }
+
+  T.consumeClose();
+  StructScope.Exit();
+}
+
+void Parser::ParseCxMethodBody(Decl *MethodDecl, CachedTokens &Toks) {
+  // The body was cached while the record was still incomplete, because a
+  // method may use fields declared after it. Replay it now that the type is
+  // complete, the same way C++ replays an inline member function body.
+  assert(!Toks.empty() && "empty method body");
+  ParenBraceBracketBalancer BalancerRAIIObj(*this);
+
+  Token BodyEnd;
+  BodyEnd.startToken();
+  BodyEnd.setKind(tok::eof);
+  BodyEnd.setLocation(Toks.back().getEndLoc());
+  BodyEnd.setEofData(MethodDecl);
+  Toks.push_back(BodyEnd);
+  Toks.push_back(Tok); // keep the token we are sitting on
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true, /*IsReinject=*/true);
+  ConsumeAnyToken(/*ConsumeCodeCompletionTok=*/true);
+
+  ParseScope BodyScope(this, Scope::FnScope | Scope::DeclScope |
+                                 Scope::CompoundStmtScope);
+  Sema::FPFeaturesStateRAII SaveFPFeatures(Actions);
+  Actions.ActOnStartOfFunctionDef(getCurScope(), MethodDecl);
+
+  StmtResult Body(ParseCompoundStatementBody());
+  if (Body.isInvalid())
+    Body = Actions.ActOnCompoundStmt(Tok.getLocation(), Tok.getLocation(), {},
+                                     /*isStmtExpr=*/false);
+  Actions.ActOnFinishFunctionBody(MethodDecl, Body.get());
+  BodyScope.Exit();
+
+  // A method definition is an ordinary external definition, but it is nested
+  // in a record, so the top-level loop never sees it. Hand it over directly.
+  Actions.getASTConsumer().HandleTopLevelDecl(DeclGroupRef(MethodDecl));
+
+  while (Tok.isNot(tok::eof))
+    ConsumeAnyToken();
+  if (Tok.is(tok::eof) && Tok.getEofData() == MethodDecl)
+    ConsumeAnyToken();
 }
 
 bool Parser::isCxCompoundNameSuffix() {

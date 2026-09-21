@@ -2172,7 +2172,9 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
     assert(Tok.is(tok::l_brace) ||
            (getLangOpts().CPlusPlus && Tok.is(tok::colon)) ||
            isClassCompatibleKeyword());
-    if (SkipBody.ShouldSkip)
+    if (SkipBody.CxContinuation)
+      ParseCxContinuationBody(cast<RecordDecl>(SkipBody.Previous));
+    else if (SkipBody.ShouldSkip)
       SkipCXXMemberSpecification(StartLoc, AttrFixitLoc, TagType,
                                  TagOrTempResult.get());
     else if (getLangOpts().CPlusPlus)
