@@ -123,9 +123,10 @@ failed, 0 unexpected failures.
 - **The address-exposure rule is conservative**, as described above; G08.
 - **Nested writeback is not covered.** Properties and subscripts do not exist
   yet, so the writeback cases G08 lists cannot be checked. M14.
-- **A mutating method call on a restricted stored member is not checked**,
-  because a stored member of struct type with its own methods is only
-  reachable once construction and nested values are in place.
+- ~~**A mutating method call on a restricted stored member is not checked.**~~
+  Closed by the construction work in [M4d](M4d.md)–[M4f](M4f.md): a mutating
+  call takes the member's address, so `o->in.bump()` on a `private(set)`
+  member is rejected where the write is.
 - **No hidden-visibility story.** Access is a source rule only; an internal or
   private member still has an ordinary external symbol, as
   `abi/linkage-and-mangling.md` anticipates.

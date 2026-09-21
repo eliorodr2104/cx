@@ -21,4 +21,5 @@ one slice of a roadmap row that is being implemented in stages; a dotted number
 - [M4c — Access control](M4c.md) — **Completed**
 - [M4d — Generated memberwise construction](M4d.md) — **Completed**
 - [M4e — Declaration-site field defaults](M4e.md) — **Completed**
+- [M4f — Custom initializers](M4f.md) — **Completed**
 - [M4.1 — Close the access and method-call holes](M4.1.md) — **Completed**

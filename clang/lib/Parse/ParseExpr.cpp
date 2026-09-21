@@ -892,7 +892,9 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
     if (getLangOpts().CX && NextToken().is(tok::l_paren) &&
         Actions.getCxConstructionType(Tok.getIdentifierInfo(),
                                       Tok.getLocation(), getCurScope()))
-      return ParseCxConstructionExpression();
+      // A constructed value is an ordinary expression, so `Size(...).width`
+      // and `Rect(2).area()` continue from here.
+      return ParsePostfixExpressionSuffix(ParseCxConstructionExpression());
     goto ParseIdentifier;
   ParseIdentifier: {    // primary-expression: identifier
                         // unqualified-id: identifier
@@ -1298,7 +1300,7 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
     // Cx: `Size(width: 80, height: 40)` constructs a struct value. A type name
     // followed by '(' is not a C expression, so nothing is reinterpreted.
     if (getLangOpts().CX && NextToken().is(tok::l_paren))
-      return ParseCxConstructionExpression();
+      return ParsePostfixExpressionSuffix(ParseCxConstructionExpression());
     if (isStartOfObjCClassMessageMissingOpenBracket()) {
       TypeResult Type = getTypeAnnotation(Tok);
 

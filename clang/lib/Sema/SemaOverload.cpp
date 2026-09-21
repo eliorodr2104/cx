@@ -12355,6 +12355,14 @@ static void DiagnoseArityMismatch(Sema &S, NamedDecl *Found, Decl *D,
 
   unsigned ParamCount =
       Fn->getNumNonObjectParams() + ((IsAddressOf && !Fn->isStatic()) ? 1 : 0);
+
+  // A Cx method's receiver is not a written argument, so none of the counts
+  // this note prints may include it.
+  unsigned CxReceiver = S.getCxReceiverOffset(Fn);
+  MinParams -= std::min(MinParams, CxReceiver);
+  ParamCount -= std::min(ParamCount, CxReceiver);
+  NumFormalArgs -= std::min(NumFormalArgs, CxReceiver);
+
   unsigned mode, modeCount;
 
   if (NumFormalArgs < MinParams) {
@@ -12376,7 +12384,8 @@ static void DiagnoseArityMismatch(Sema &S, NamedDecl *Found, Decl *D,
   std::pair<OverloadCandidateKind, OverloadCandidateSelect> FnKindPair =
       ClassifyOverloadCandidate(S, Found, Fn, CRK_None, Description);
 
-  unsigned FirstNonObjectParamIdx = HasExplicitObjectParam ? 1 : 0;
+  unsigned FirstNonObjectParamIdx =
+      (HasExplicitObjectParam ? 1 : 0) + CxReceiver;
   if (modeCount == 1 && !IsAddressOf &&
       FirstNonObjectParamIdx < Fn->getNumParams() &&
       Fn->getParamDecl(FirstNonObjectParamIdx)->getDeclName())

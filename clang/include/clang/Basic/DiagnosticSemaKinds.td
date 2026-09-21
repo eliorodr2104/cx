@@ -2731,6 +2731,19 @@ def err_cx_construction_label : Error<
 def note_cx_construction_field : Note<
   "field %0 declared here">;
 
+def err_cx_init_return_type : Error<
+  "a Cx initializer produces its own type, so it declares no return type">;
+def err_cx_init_mutating : Error<
+  "an initializer establishes the value it builds, so it cannot be "
+  "'~mutating'">;
+def err_cx_no_viable_initializer : Error<
+  "no initializer of %0 accepts these values">;
+def err_cx_ambiguous_initializer : Error<
+  "construction of %0 is ambiguous">;
+def err_cx_init_at_file_scope : Error<
+  "construction of %0 runs an initializer, so it cannot appear outside a "
+  "function">;
+
 def err_cx_continuation_adds_field : Error<
   "a continuation of %0 cannot add a stored field">;
 def note_cx_primary_definition : Note<

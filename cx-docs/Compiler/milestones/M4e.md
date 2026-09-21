@@ -104,10 +104,9 @@ failed, 0 unexpected failures.
 
 ## Known limitations
 
-- **No custom `init`.** This is now the only unimplemented part of
-  `language/initializers.md`: `init(...)` in the type, `Type(...)` selecting
-  it, and the rule that declaring one suppresses the generated surface. A type
-  that needs to validate or hide its construction still cannot.
+- ~~**No custom `init`.**~~ Supplied by [M4f](M4f.md): `init(...)` in the
+  type, `Type(...)` selecting it, and the rule that declaring one suppresses
+  the generated surface.
 - **A default cannot mention another field.** It is an ordinary expression
   evaluated with no receiver, so `int b = a + 1;` does not work.
 - **Defaults are not used for an uninitialized declaration.** `Guarded g;`

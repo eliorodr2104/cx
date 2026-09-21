@@ -4204,6 +4204,11 @@ public:
   /// symbol is the mangled Cx name. Defined in SemaCx.cpp.
   void AddCxLinkage(FunctionDecl *FD, const LookupResult &Previous);
 
+  /// 1 when \p FD carries a Cx implicit receiver, which is a parameter no
+  /// call writes. Anything that lines written arguments up with parameters
+  /// has to skip it.
+  unsigned getCxReceiverOffset(const FunctionDecl *FD) const;
+
   /// Record \p Label as the external argument label of parameter \p Param.
   void AddCxArgumentLabel(Decl *Param, const IdentifierInfo *Label);
 
@@ -4279,6 +4284,20 @@ public:
   /// Used to tell `Size(...)` construction from an ordinary call.
   ParsedType getCxConstructionType(const IdentifierInfo *II,
                                    SourceLocation Loc, Scope *S);
+
+  /// Whether \p FD is a Cx initializer, the `init` of its record.
+  bool isCxInitializer(const FunctionDecl *FD) const;
+
+  /// Build the construction of \p T through one of its custom initializers:
+  /// an object holding the declaration defaults, the selected initializer run
+  /// over it, and then that object as the value.
+  ExprResult BuildCxInitConstruction(QualType T, RecordDecl *RD,
+                                     SourceLocation TypeLoc,
+                                     SourceLocation LParenLoc,
+                                     ArrayRef<const IdentifierInfo *> Labels,
+                                     ArrayRef<SourceLocation> LabelLocs,
+                                     MultiExprArg Args,
+                                     SourceLocation RParenLoc);
 
   ExprResult ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
                                  SourceLocation LParenLoc,

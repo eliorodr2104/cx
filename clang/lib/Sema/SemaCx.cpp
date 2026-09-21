@@ -88,6 +88,10 @@ static unsigned cxSelfOffset(const FunctionDecl *FD) {
   return FD->hasAttr<CxMethodAttr>() ? 1 : 0;
 }
 
+unsigned Sema::getCxReceiverOffset(const FunctionDecl *FD) const {
+  return getLangOpts().CX && FD ? cxSelfOffset(FD) : 0;
+}
+
 /// The external argument label of \p PVD, or null when it has none.
 static const IdentifierInfo *getCxLabel(const ParmVarDecl *PVD) {
   if (const auto *A = PVD->getAttr<CxArgumentLabelAttr>())
@@ -136,6 +140,9 @@ void Sema::CheckCxArgumentLabels(Expr *Call,
 
   const FunctionDecl *Callee = CE->getDirectCallee();
   if (!Callee) {
+    // A call whose callee is already in error says nothing about labels.
+    if (CE->getCallee()->containsErrors())
+      return;
     // A C function pointer carries no Cx argument-label interface.
     if (AnyWritten) {
       for (unsigned I = 0, E = Labels.size(); I != E; ++I)
@@ -310,6 +317,18 @@ ExprResult Sema::BuildCxCompoundNameRef(Expr *Fn,
 // Struct methods
 //===----------------------------------------------------------------------===//
 
+/// Whether \p FD is a Cx initializer. An initializer is a method named
+/// `init`: it takes the receiver the same way, and everything that gives a
+/// method its labels, its linkage and its symbol applies unchanged.
+static bool isCxInit(const FunctionDecl *FD) {
+  return FD->hasAttr<CxMethodAttr>() && FD->getDeclName().isIdentifier() &&
+         FD->getName() == "init";
+}
+
+bool Sema::isCxInitializer(const FunctionDecl *FD) const {
+  return FD && isCxInit(FD);
+}
+
 /// The method of \p RD that \p New redeclares, or null when it introduces a
 /// new one. Identity is the name, the parameter types and the argument
 /// labels; local parameter names may differ.
@@ -353,6 +372,20 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
   if (!FT) {
     Diag(D.getBeginLoc(), diag::err_cx_method_needs_prototype);
     return nullptr;
+  }
+
+  if (NameInfo.getName().getAsIdentifierInfo()->isStr("init")) {
+    // The parser gives an initializer a `void` return type, so a written one
+    // is the only way this fails.
+    if (!FT->getReturnType()->isVoidType()) {
+      Diag(D.getBeginLoc(), diag::err_cx_init_return_type);
+      return nullptr;
+    }
+    // An initializer establishes the value, so its receiver is never const.
+    if (NonMutating) {
+      Diag(D.getBeginLoc(), diag::err_cx_init_mutating);
+      NonMutating = false;
+    }
   }
 
   // A method is an associated function: `self` is an ordinary leading
@@ -437,7 +470,8 @@ FunctionDecl *Sema::LookupCxMethod(const RecordDecl *RD, DeclarationName Name) {
     return nullptr;
   for (Decl *D : RD->decls())
     if (auto *FD = dyn_cast<FunctionDecl>(D))
-      if (FD->hasAttr<CxMethodAttr>() && FD->getDeclName() == Name)
+      if (FD->hasAttr<CxMethodAttr>() && !isCxInit(FD) &&
+          FD->getDeclName() == Name)
         return FD;
   return nullptr;
 }
@@ -744,6 +778,140 @@ ParsedType Sema::getCxConstructionType(const IdentifierInfo *II,
   return QT->getAs<RecordType>() ? T : nullptr;
 }
 
+/// Whether \p RD declares a custom initializer, which replaces the generated
+/// memberwise surface entirely.
+static bool hasCxInitializer(const RecordDecl *RD) {
+  for (Decl *D : RD->decls())
+    if (const auto *FD = dyn_cast<FunctionDecl>(D))
+      if (isCxInit(FD))
+        return true;
+  return false;
+}
+
+ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
+                                         SourceLocation TypeLoc,
+                                         SourceLocation LParenLoc,
+                                         ArrayRef<const IdentifierInfo *> Labels,
+                                         ArrayRef<SourceLocation> LabelLocs,
+                                         MultiExprArg Args,
+                                         SourceLocation RParenLoc) {
+  // An initializer is code that runs, so the construction is a statement
+  // expression and needs a function to run in.
+  if (!CurContext->isFunctionOrMethod() || !getCurFunction()) {
+    Diag(TypeLoc, diag::err_cx_init_at_file_scope) << T;
+    return ExprError();
+  }
+
+  // The object under construction. Declaration defaults still participate,
+  // so it starts out holding them.
+  VarDecl *Object = VarDecl::Create(
+      Context, CurContext, TypeLoc, TypeLoc, &Context.Idents.get("__cx_object"),
+      T, Context.getTrivialTypeSourceInfo(T, TypeLoc), SC_None);
+  Object->setImplicit();
+
+  SmallVector<Expr *, 8> Defaults;
+  for (FieldDecl *FD : RD->fields()) {
+    if (Expr *Default = FD->getInClassInitializer())
+      Defaults.push_back(Default);
+    else
+      // Until definite initialization exists, a field the initializer does
+      // not write reads as zero rather than as garbage.
+      Defaults.push_back(new (Context) ImplicitValueInitExpr(FD->getType()));
+  }
+  if (!Defaults.empty()) {
+    // Access was not checked here: none of these values is written by the
+    // call, they are the type's own defaults.
+    llvm::SaveAndRestore<bool> Building(CxBuildingConstruction, true);
+    ExprResult Init = ActOnInitList(LParenLoc, Defaults, RParenLoc);
+    if (Init.isInvalid())
+      return ExprError();
+    AddInitializerToDecl(Object, Init.get(), /*DirectInit=*/false);
+    if (Object->isInvalidDecl())
+      return ExprError();
+  }
+
+  ExprResult Receiver = BuildDeclRefExpr(Object, T, VK_LValue, TypeLoc);
+  if (Receiver.isInvalid())
+    return ExprError();
+  ExprResult SelfArg = CreateBuiltinUnaryOp(TypeLoc, UO_AddrOf, Receiver.get());
+  if (SelfArg.isInvalid())
+    return ExprError();
+
+  SmallVector<Expr *, 8> AllArgs;
+  AllArgs.push_back(SelfArg.get());
+  AllArgs.append(Args.begin(), Args.end());
+
+  // The initializers are an overload set like any other; the receiver is the
+  // first argument, which is what lets the ordinary resolution apply.
+  FunctionDecl *Init = nullptr;
+  {
+    CxCallLabelScope LabelScope(*this, Labels);
+    OverloadCandidateSet Candidates(TypeLoc, OverloadCandidateSet::CSK_Normal);
+    llvm::SmallPtrSet<const FunctionDecl *, 4> Seen;
+    for (Decl *D : RD->decls()) {
+      auto *FD = dyn_cast<FunctionDecl>(D);
+      if (!FD || !isCxInit(FD) || !Seen.insert(FD->getCanonicalDecl()).second)
+        continue;
+      AddOverloadCandidate(FD, DeclAccessPair::make(FD, FD->getAccess()),
+                           AllArgs, Candidates);
+    }
+
+    OverloadCandidateSet::iterator Best;
+    switch (Candidates.BestViableFunction(*this, TypeLoc, Best)) {
+    case OR_Success:
+      Init = Best->Function;
+      break;
+    case OR_No_Viable_Function:
+      Candidates.NoteCandidates(
+          PartialDiagnosticAt(TypeLoc,
+                              PDiag(diag::err_cx_no_viable_initializer) << T),
+          *this, OCD_AllCandidates, AllArgs);
+      return ExprError();
+    case OR_Ambiguous:
+      Candidates.NoteCandidates(
+          PartialDiagnosticAt(TypeLoc,
+                              PDiag(diag::err_cx_ambiguous_initializer) << T),
+          *this, OCD_AmbiguousCandidates, AllArgs);
+      return ExprError();
+    case OR_Deleted:
+      return ExprError();
+    }
+  }
+
+  // Construction is bounded by the initializer it selects, not by the fields.
+  if (CheckCxMemberAccess(Init, TypeLoc, /*ForWrite=*/false))
+    return ExprError();
+
+  ExprResult Fn = BuildDeclRefExpr(
+      Init, Init->getType(), VK_PRValue,
+      DeclarationNameInfo(Init->getDeclName(), TypeLoc),
+      NestedNameSpecifierLoc());
+  if (Fn.isInvalid())
+    return ExprError();
+  ExprResult Call =
+      BuildResolvedCallExpr(Fn.get(), Init, LParenLoc, AllArgs, RParenLoc);
+  if (Call.isInvalid())
+    return ExprError();
+  CheckCxArgumentLabels(Call.get(), Labels, LabelLocs);
+
+  ExprResult Value = ActOnStmtExprResult(
+      BuildDeclRefExpr(Object, T, VK_LValue, RParenLoc));
+  if (Value.isInvalid())
+    return ExprError();
+
+  // Declare the object, run the initializer over it, produce it. A statement
+  // expression is what C already has for "these statements, then this value",
+  // so no new AST node and no new lowering are needed.
+  Stmt *Body[] = {new (Context) DeclStmt(DeclGroupRef(Object), TypeLoc,
+                                         RParenLoc),
+                  Call.get(), Value.get()};
+  ActOnStartStmtExpr();
+  return BuildStmtExpr(LParenLoc,
+                       CompoundStmt::Create(Context, Body, FPOptionsOverride(),
+                                            LParenLoc, RParenLoc),
+                       RParenLoc, /*TemplateDepth=*/0);
+}
+
 ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
                                      SourceLocation LParenLoc,
                                      ArrayRef<const IdentifierInfo *> Labels,
@@ -764,6 +932,12 @@ ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
     return ExprError();
 
   RecordDecl *RD = RT->getDecl()->getDefinition();
+
+  // A custom initializer replaces the generated surface entirely: the
+  // initializers are the complete construction interface.
+  if (hasCxInitializer(RD))
+    return BuildCxInitConstruction(T, RD, TypeLoc, LParenLoc, Labels, LabelLocs,
+                                   Args, RParenLoc);
 
   // The generated surface is one labelled value per stored field, in
   // declaration order. Its labels are the field names.

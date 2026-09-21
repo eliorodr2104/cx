@@ -2071,6 +2071,11 @@ private:
   /// list. The caller has already consumed the '('.
   bool isCxCompoundNameSuffix();
 
+  /// Whether the current token starts a Cx initializer declaration
+  /// `init(...)` inside a struct body. When it does, a `void` return type is
+  /// spliced in front of it so the ordinary method path builds it.
+  bool TryCxInitializerIntroducer();
+
   /// Parse the body of a Cx struct method whose declaration is \p MethodDecl,
   /// from tokens cached while the record was still incomplete.
   void ParseCxMethodBody(Decl *MethodDecl, CachedTokens &Toks);

@@ -5031,6 +5031,8 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
       NonMutating = true;
     }
 
+    TryCxInitializerIntroducer();
+
     if (!Tok.is(tok::at)) {
       Decl *CxMethod = nullptr;
       auto CFieldCallback = [&](ParsingFieldDeclarator &FD) -> Decl * {
@@ -6018,6 +6020,28 @@ bool Parser::ParseCxAccessSpecifiers(std::optional<unsigned> &Read,
   return Any;
 }
 
+bool Parser::TryCxInitializerIntroducer() {
+  if (!getLangOpts().CX || Tok.isNot(tok::identifier) ||
+      !Tok.getIdentifierInfo()->isStr("init") || NextToken().isNot(tok::l_paren))
+    return false;
+  // `init (x);` declares a field when `init` is a type name, which is the one
+  // C spelling this position already has a meaning for.
+  if (Actions.getTypeName(*Tok.getIdentifierInfo(), Tok.getLocation(),
+                          getCurScope()))
+    return false;
+
+  // An initializer writes no return type. Splice a `void` in front of it so
+  // the ordinary member path sees a plain function declarator and builds the
+  // receiver, the labels and the body exactly as it does for a method.
+  Token Void;
+  Void.startToken();
+  Void.setKind(tok::kw_void);
+  Void.setLocation(Tok.getLocation());
+  PP.EnterToken(Tok, /*IsReinject=*/true);
+  Tok = Void;
+  return true;
+}
+
 void Parser::ParseCxContinuationBody(RecordDecl *RD) {
   // The record is already complete. Members are added to it directly; there is
   // no ActOnTagStartDefinition and no ActOnFields, so the layout cannot change.
@@ -6045,6 +6069,8 @@ void Parser::ParseCxContinuationBody(RecordDecl *RD) {
       ConsumeToken();
       NonMutating = true;
     }
+
+    TryCxInitializerIntroducer();
 
     Decl *CxMethod = nullptr;
     auto MemberCallback = [&](ParsingFieldDeclarator &FD) -> Decl * {

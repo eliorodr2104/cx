@@ -23,6 +23,11 @@ int make(void) {
 // CHECK-DAG: @"__const._Z16_Cx0$Shapes$makev.s" = {{.*}}%struct.Size { i32 80, i32 40 }
 // CHECK-DAG: define {{.*}}@"_Z16_Cx0$Shapes$makev"
 
+// A constructed value is an ordinary expression, so a postfix suffix
+// continues from it.
+int field(void) { return Size(width: 3, height: 4).height; }
+// CHECK: define {{.*}}@"_Z17_Cx0$Shapes$fieldv"
+
 // An ordinary call is still a call.
 int callee(int v);
 int call(void) { return callee(1); }
