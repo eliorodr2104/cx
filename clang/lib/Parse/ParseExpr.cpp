@@ -1870,7 +1870,29 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         Loc = PT.getOpenLocation();
       }
 
+      // Cx: `move(x:)` is a compound name referring to a function, not a call.
+      // It filters an overload set by argument labels; the target type then
+      // selects among whatever is left.
+      if (getLangOpts().CX && OpKind == tok::l_paren && !LHS.isInvalid() &&
+          isCxCompoundNameSuffix()) {
+        SmallVector<const IdentifierInfo *, 4> Labels;
+        while (Tok.isNot(tok::r_paren)) {
+          const IdentifierInfo *II = Tok.getIdentifierInfo();
+          Labels.push_back(II->isStr("_") ? nullptr : II);
+          ConsumeToken(); // the label
+          ConsumeToken(); // ':'
+        }
+        LHS = Actions.BuildCxCompoundNameRef(LHS.get(), Labels, Loc,
+                                             Tok.getLocation());
+        PT.consumeClose();
+        break;
+      }
+
       ExprVector ArgExprs;
+      // Cx: each argument may be preceded by its label. `name :` at the start
+      // of an argument is not valid C, so no C expression changes meaning.
+      SmallVector<const IdentifierInfo *, 4> CxLabels;
+      SmallVector<SourceLocation, 4> CxLabelLocs;
       auto RunSignatureHelp = [&]() -> QualType {
         QualType PreferredType =
             Actions.CodeCompletion().ProduceCallSignatureHelp(
@@ -1882,6 +1904,16 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       if (OpKind == tok::l_paren || !LHS.isInvalid()) {
         if (Tok.isNot(tok::r_paren)) {
           if ((ExpressionListIsInvalid = ParseExpressionList(ArgExprs, [&] {
+                 if (getLangOpts().CX && OpKind == tok::l_paren) {
+                   CxLabelLocs.push_back(Tok.getLocation());
+                   if (Tok.is(tok::identifier) && NextToken().is(tok::colon)) {
+                     CxLabels.push_back(Tok.getIdentifierInfo());
+                     ConsumeToken(); // the label
+                     ConsumeToken(); // ':'
+                   } else {
+                     CxLabels.push_back(nullptr);
+                   }
+                 }
                  PreferredType.enterFunctionArgument(Tok.getLocation(),
                                                      RunSignatureHelp);
                }))) {
@@ -1922,8 +1954,19 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       } else {
         Expr *Fn = LHS.get();
         SourceLocation RParLoc = Tok.getLocation();
-        LHS = Actions.ActOnCallExpr(getCurScope(), Fn, Loc, ArgExprs, RParLoc,
-                                    ExecConfig);
+        bool HaveCxLabels =
+            getLangOpts().CX && CxLabels.size() == ArgExprs.size();
+        {
+          // Overload resolution needs the labels: a candidate whose labels are
+          // not the ones written is not applicable, whatever its types allow.
+          Sema::CxCallLabelScope LabelScope(
+              Actions, HaveCxLabels ? ArrayRef<const IdentifierInfo *>(CxLabels)
+                                    : ArrayRef<const IdentifierInfo *>());
+          LHS = Actions.ActOnCallExpr(getCurScope(), Fn, Loc, ArgExprs, RParLoc,
+                                      ExecConfig);
+        }
+        if (HaveCxLabels && !LHS.isInvalid())
+          Actions.CheckCxArgumentLabels(LHS.get(), CxLabels, CxLabelLocs);
         if (LHS.isInvalid()) {
           ArgExprs.insert(ArgExprs.begin(), Fn);
           LHS =

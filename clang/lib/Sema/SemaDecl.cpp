@@ -10753,6 +10753,11 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     }
   }
 
+  // Cx: decide this declaration's linkage before redeclaration merging, so
+  // that every declaration of one entity agrees about it.
+  if (getLangOpts().CX)
+    AddCxLinkage(NewFD, Previous);
+
   if (!getLangOpts().CPlusPlus) {
     // Perform semantic checking on the function declaration.
     if (!NewFD->isInvalidDecl() && NewFD->isMain())
@@ -12521,6 +12526,12 @@ bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
       NewFD->addAttr(OverloadableAttr::CreateImplicit(Context));
     }
   }
+
+  // Cx: a function declared in a module-owned file has Cx linkage. This runs
+  // after redeclaration merging so that an entity's first declaration decides
+  // its identity.
+  if (LangOpts.CX)
+    CheckCxArgumentLabelRedeclaration(NewFD);
 
   if (LangOpts.OpenMP)
     OpenMP().ActOnFinishedFunctionDefinitionInOpenMPAssumeScope(NewFD);

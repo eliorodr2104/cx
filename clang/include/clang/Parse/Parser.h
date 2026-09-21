@@ -2066,6 +2066,11 @@ private:
   /// A visible C declaration with that name keeps its C interpretation.
   bool isCxInferenceSpecifier(const Token &Tok);
 
+  /// Whether the tokens from the current one up to the matching ')' spell a
+  /// Cx compound name such as `x:` or `_:mode:` rather than a call argument
+  /// list. The caller has already consumed the '('.
+  bool isCxCompoundNameSuffix();
+
   /// isTypeSpecifierQualifier - Return true if the current token could be the
   /// start of a specifier-qualifier-list.
   bool isTypeSpecifierQualifier(const Token &Tok);

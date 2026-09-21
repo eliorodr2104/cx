@@ -508,6 +508,7 @@ private:
   void mangleDestructorName(const CXXDestructorDecl *CDD,
                             ArrayRef<StringRef> AdditionalAbiTags = {});
   void mangleRegCallName(const IdentifierInfo *II);
+  void mangleCxName(const FunctionDecl *FD, const IdentifierInfo *II);
   void mangleDeviceStubName(const IdentifierInfo *II);
   void mangleOCLDeviceStubName(const IdentifierInfo *II);
   void mangleSourceNameWithAbiTags(const NamedDecl *ND,
@@ -751,6 +752,11 @@ bool ItaniumMangleContextImpl::shouldMangleCXXName(const NamedDecl *D) {
     LanguageLinkage L = FD->getLanguageLinkage();
     // Overloadable functions need mangling.
     if (FD->hasAttr<OverloadableAttr>())
+      return true;
+
+    // So do functions with Cx linkage: their symbol carries the owning module
+    // and the parameter types, not just the base name.
+    if (FD->hasAttr<CxLinkageAttr>())
       return true;
 
     // "main" is not mangled.
@@ -1559,6 +1565,8 @@ void CXXNameMangler::mangleUnqualifiedName(
         mangleOCLDeviceStubName(II);
       else if (IsRegCall)
         mangleRegCallName(II);
+      else if (FD && FD->hasAttr<CxLinkageAttr>())
+        mangleCxName(FD, II);
       else
         mangleSourceName(II);
 
@@ -1761,6 +1769,42 @@ void CXXNameMangler::mangleDestructorName(
     mangleCXXDtorType(Dtor_Complete);
   assert(CDD);
   writeAbiTags(CDD, AdditionalAbiTags);
+}
+
+/// Mangle the source name of an entity with Cx linkage.
+///
+/// Cx identity is the owning module plus the base name; the parameter types
+/// come from the enclosing function mangling as usual. The whole thing is
+/// written as one Itanium <source-name>, so the symbol stays a single
+/// well-formed token that ordinary tools can carry around.
+///
+///   <cx-name> ::= <length> _Cx <version> $ <module> $ <base-name>
+///
+/// The version prefix is deliberate: this encoding is experimental and is not
+/// a distribution promise. See cx-docs/abi/linkage-and-mangling.md.
+void CXXNameMangler::mangleCxName(const FunctionDecl *FD,
+                                  const IdentifierInfo *II) {
+  const auto *A = FD->getAttr<CxLinkageAttr>();
+  SmallString<64> Name;
+  llvm::raw_svector_ostream NameOS(Name);
+  NameOS << "_Cx0$" << A->getModule()->getName() << '$' << II->getName();
+
+  // Argument labels are part of a Cx entity's identity, so they belong in the
+  // symbol. The section is written only when at least one parameter has a
+  // label, which keeps a wholly unlabeled function's symbol unchanged.
+  if (llvm::any_of(FD->parameters(), [](const ParmVarDecl *PVD) {
+        return PVD->hasAttr<CxArgumentLabelAttr>();
+      })) {
+    NameOS << '$';
+    for (const ParmVarDecl *PVD : FD->parameters()) {
+      if (const auto *L = PVD->getAttr<CxArgumentLabelAttr>())
+        NameOS << L->getLabel()->getName();
+      else
+        NameOS << '_';
+      NameOS << ':';
+    }
+  }
+  Out << Name.size() << Name;
 }
 
 void CXXNameMangler::mangleRegCallName(const IdentifierInfo *II) {

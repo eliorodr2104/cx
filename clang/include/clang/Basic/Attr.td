@@ -1015,6 +1015,28 @@ def AnalyzerNoReturn : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
+/// Marks a function that carries Cx linkage: it is owned by a Cx module and
+/// its symbol is the mangled Cx name rather than its plain C name. Added
+/// implicitly by Sema; there is no user spelling.
+def CxLinkage : InheritableAttr {
+  let Spellings = [];
+  let Args = [IdentifierArgument<"Module">];
+  let Subjects = SubjectList<[Function], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
+/// The external argument label of a Cx parameter. The parameter's own name is
+/// the local name used inside the body. Added implicitly by Sema; there is no
+/// user spelling.
+def CxArgumentLabel : InheritableAttr {
+  let Spellings = [];
+  let Args = [IdentifierArgument<"Label">];
+  let Subjects = SubjectList<[ParmVar], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
 def InferredNoReturn : InheritableAttr {
   let Spellings = [];
   let SemaHandler = 0;

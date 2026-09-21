@@ -922,6 +922,10 @@ class Sema;
     /// This candidate was not viable because it has internal linkage and is
     /// from a different module unit than the use.
     ovl_fail_module_mismatched,
+
+    /// This candidate was not viable because its Cx argument labels are not
+    /// the ones written at the call.
+    ovl_fail_cx_argument_label,
   };
 
   /// A list of implicit conversion sequences for the arguments of an

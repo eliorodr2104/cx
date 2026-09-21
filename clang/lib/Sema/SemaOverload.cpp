@@ -1358,6 +1358,12 @@ static bool IsOverloadOrOverrideImpl(Sema &SemaRef, FunctionDecl *New,
   if (New->isMSVCRTEntryPoint())
     return false;
 
+  // Cx: argument labels are part of a function's identity, so two declarations
+  // that differ only in their labels are overloads, not redeclarations.
+  if (SemaRef.getLangOpts().CX && !UseOverrideRules &&
+      SemaRef.HasDifferentCxArgumentLabels(New, Old))
+    return true;
+
   NamedDecl *OldDecl = Old;
   NamedDecl *NewDecl = New;
   FunctionTemplateDecl *OldTemplate = Old->getDescribedFunctionTemplate();
@@ -7475,6 +7481,17 @@ void Sema::AddOverloadCandidate(
     return;
   }
 
+  // Cx: a candidate whose argument labels are not the ones written at the
+  // call is not applicable, whatever its parameter types allow.
+  if (getLangOpts().CX && !CxCallArgumentLabels.empty()) {
+    unsigned BadArg = 0;
+    if (!CxCandidateAcceptsCallLabels(Function, BadArg)) {
+      Candidate.Viable = false;
+      Candidate.FailureKind = ovl_fail_cx_argument_label;
+      return;
+    }
+  }
+
   // (CUDA B.1): Check for invalid calls between targets.
   if (getLangOpts().CUDA) {
     const FunctionDecl *Caller = getCurFunctionDecl(/*AllowLambda=*/true);
@@ -12954,6 +12971,26 @@ static void NoteFunctionCandidate(Sema &S, OverloadCandidate *Cand,
 
   case ovl_fail_bad_target:
     return DiagnoseBadTarget(S, Cand);
+
+  case ovl_fail_cx_argument_label: {
+    unsigned BadArg = 0;
+    S.CxCandidateAcceptsCallLabels(Fn, BadArg);
+    const IdentifierInfo *Expected =
+        BadArg < Fn->getNumParams()
+            ? (Fn->getParamDecl(BadArg)->hasAttr<CxArgumentLabelAttr>()
+                   ? Fn->getParamDecl(BadArg)
+                         ->getAttr<CxArgumentLabelAttr>()
+                         ->getLabel()
+                   : nullptr)
+            : nullptr;
+    if (Expected)
+      S.Diag(Fn->getLocation(), diag::note_ovl_candidate_cx_label)
+          << 0 << (Expected->getName() + ":").str() << (BadArg + 1);
+    else
+      S.Diag(Fn->getLocation(), diag::note_ovl_candidate_cx_label)
+          << 1 << "" << (BadArg + 1);
+    return;
+  }
 
   case ovl_fail_enable_if:
     return DiagnoseFailedEnableIfAttr(S, Cand);

@@ -2692,6 +2692,31 @@ def err_deduced_tst : Error<
   "%select{class template|function template|variable template|alias template|"
   "template template parameter|template}0; argument deduction not allowed "
   "here">;
+def err_cx_missing_argument_label : Error<
+  "missing argument label '%0' in call">;
+def err_cx_extraneous_argument_label : Error<
+  "extraneous argument label '%0' in call">;
+def err_cx_wrong_argument_label : Error<
+  "incorrect argument label in call (have '%0', expected '%1')">;
+def note_cx_parameter_declared_here : Note<
+  "parameter declared here">;
+def note_ovl_candidate_cx_label : Note<
+  "candidate function not viable: "
+  "%select{expects argument label '%1'|takes no argument label}0 "
+  "for argument %2">;
+def err_cx_no_function_with_labels : Error<
+  "no function named %0 has the argument labels '%1'">;
+def err_cx_compound_name_not_function : Error<
+  "a compound name must refer to a function">;
+def note_cx_compound_name_candidate : Note<
+  "candidate has the argument labels '%0'">;
+
+def err_cx_label_through_pointer : Error<
+  "argument labels are not available through a function pointer">;
+def err_cx_label_redeclaration_mismatch : Error<
+  "argument labels in redeclaration of %0 do not match the previous "
+  "declaration">;
+
 def err_auto_not_allowed_var_inst : Error<
   "'auto' variable template instantiation is not allowed">;
 def err_auto_var_requires_init : Error<

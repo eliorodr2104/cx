@@ -5851,6 +5851,22 @@ bool Parser::isCxInferenceSpecifier(const Token &Tok) {
   return Actions.isCxContextualKeyword(II, getCurScope());
 }
 
+bool Parser::isCxCompoundNameSuffix() {
+  if (!getLangOpts().CX)
+    return false;
+  unsigned N = 0;
+  bool SawLabel = false;
+  for (;;) {
+    const Token &T = GetLookAheadToken(N);
+    if (T.is(tok::r_paren))
+      return SawLabel; // `f()` is an ordinary call with no arguments.
+    if (!T.is(tok::identifier) || !GetLookAheadToken(N + 1).is(tok::colon))
+      return false;
+    SawLabel = true;
+    N += 2;
+  }
+}
+
 bool Parser::isDeclarationSpecifier(
     ImplicitTypenameContext AllowImplicitTypename,
     bool DisambiguatingWithExpression) {
@@ -7677,6 +7693,18 @@ void Parser::ParseParameterDeclarationClause(
                                   : DeclaratorContext::Prototype);
     ParseDeclarator(ParmDeclarator);
 
+    // Cx: a labeled parameter is a complete C declarator followed by the local
+    // name, so `int width newWidth` gives the external label `width` and the
+    // local name `newWidth`. An identifier here is not valid C, so nothing is
+    // reinterpreted. One-name parameters stay positional.
+    const IdentifierInfo *CxLabel = nullptr;
+    if (getLangOpts().CX && Tok.is(tok::identifier) &&
+        ParmDeclarator.getIdentifier()) {
+      CxLabel = ParmDeclarator.getIdentifier();
+      ParmDeclarator.SetIdentifier(Tok.getIdentifierInfo(), Tok.getLocation());
+      ConsumeToken();
+    }
+
     if (ThisLoc.isValid())
       ParmDeclarator.SetRangeBegin(ThisLoc);
 
@@ -7761,6 +7789,7 @@ void Parser::ParseParameterDeclarationClause(
       // added to the current scope.
       Decl *Param =
           Actions.ActOnParamDeclarator(getCurScope(), ParmDeclarator, ThisLoc);
+      Actions.AddCxArgumentLabel(Param, CxLabel);
       // Parse the default argument, if any. We parse the default
       // arguments in all dialects; the semantic analysis in
       // ActOnParamDefaultArgument will reject the default argument in

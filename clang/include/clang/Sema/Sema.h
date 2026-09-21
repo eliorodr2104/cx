@@ -4197,6 +4197,60 @@ public:
   /// outside Cx mode. Defined in SemaCx.cpp.
   bool isCxContextualKeyword(const IdentifierInfo *II, Scope *S);
 
+  /// Give \p FD Cx linkage when its file is owned by a Cx module, so that its
+  /// symbol is the mangled Cx name. Defined in SemaCx.cpp.
+  void AddCxLinkage(FunctionDecl *FD, const LookupResult &Previous);
+
+  /// Record \p Label as the external argument label of parameter \p Param.
+  void AddCxArgumentLabel(Decl *Param, const IdentifierInfo *Label);
+
+  /// Check that a redeclaration keeps the argument labels its previous
+  /// declaration established. Labels are part of a Cx entity's identity.
+  void CheckCxArgumentLabelRedeclaration(FunctionDecl *FD);
+
+  /// Check the argument labels written at a call against the callee's
+  /// parameters. \p Labels has one entry per argument, null where the call
+  /// supplied no label.
+  void CheckCxArgumentLabels(Expr *Call,
+                             ArrayRef<const IdentifierInfo *> Labels,
+                             ArrayRef<SourceLocation> LabelLocs);
+
+  /// Whether \p A and \p B declare different argument labels, which makes
+  /// them overloads rather than redeclarations of one entity.
+  bool HasDifferentCxArgumentLabels(const FunctionDecl *A,
+                                    const FunctionDecl *B);
+
+  /// Whether \p FD accepts the argument labels written at the current call.
+  /// On failure \p BadArg is set to the first argument that disagrees.
+  bool CxCandidateAcceptsCallLabels(const FunctionDecl *FD, unsigned &BadArg);
+
+  /// Build a reference to the function named by a Cx compound name, filtering
+  /// \p Fn's overload set to the declarations with exactly \p Labels. What is
+  /// left is selected by the target type in the usual way.
+  ExprResult BuildCxCompoundNameRef(Expr *Fn,
+                                    ArrayRef<const IdentifierInfo *> Labels,
+                                    SourceLocation LParenLoc,
+                                    SourceLocation RParenLoc);
+
+  /// The argument labels written at the call currently being resolved, one
+  /// entry per argument and null where the call wrote none. Empty outside a
+  /// Cx call, which is what makes the label filter inert everywhere else.
+  ArrayRef<const IdentifierInfo *> CxCallArgumentLabels;
+
+  /// Publishes call-site argument labels to overload resolution for the
+  /// duration of one \c ActOnCallExpr.
+  class CxCallLabelScope {
+    Sema &S;
+    ArrayRef<const IdentifierInfo *> Saved;
+
+  public:
+    CxCallLabelScope(Sema &S, ArrayRef<const IdentifierInfo *> Labels)
+        : S(S), Saved(S.CxCallArgumentLabels) {
+      S.CxCallArgumentLabels = Labels;
+    }
+    ~CxCallLabelScope() { S.CxCallArgumentLabels = Saved; }
+  };
+
   /// BuildDeclaratorGroup - convert a list of declarations into a declaration
   /// group, performing any necessary semantic checking.
   DeclGroupPtrTy BuildDeclaratorGroup(MutableArrayRef<Decl *> Group);
