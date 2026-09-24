@@ -5,6 +5,12 @@
 // RUN:   %S/Inputs/cx-counter-impl.c | FileCheck --check-prefix=IMPL %s
 // RUN: %clang -x cx -std=gnu17 -I %S/Inputs -S -emit-llvm -o - %s \
 // RUN:   | FileCheck %s
+// C23 accepts a compatible redefinition of a tag, which a continuation always
+// looks like; in an owned file the continuation wins.
+// RUN: %clang -x cx -std=c23 -I %S/Inputs -S -emit-llvm -o - \
+// RUN:   %S/Inputs/cx-counter-impl.c | FileCheck --check-prefix=IMPL %s
+// RUN: %clang -x cx -std=gnu23 -I %S/Inputs -S -emit-llvm -o - %s \
+// RUN:   | FileCheck %s
 
 #include "cx-counter.h"
 

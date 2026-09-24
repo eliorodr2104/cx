@@ -1741,28 +1741,6 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
 
   bool IsArrow = (OpKind == tok::arrow);
 
-  // Cx: a method is an associated function held by the record, so ordinary
-  // member lookup does not reach it. Build the reference here; the call that
-  // must follow turns it into a call with the receiver's address.
-  if (getLangOpts().CX && !SS.isSet() && Base && NameInfo.getName().isIdentifier()) {
-    QualType BaseTy = Base->getType();
-    if (IsArrow || isCxSelfReference(Base))
-      BaseTy = BaseTy->isPointerType() ? BaseTy->getPointeeType() : QualType();
-    const RecordType *RT =
-        BaseTy.isNull() ? nullptr : BaseTy->getAs<RecordType>();
-    if (RT)
-      if (FunctionDecl *M = LookupCxMethod(RT->getDecl(), NameInfo.getName())) {
-        // Access is checked on the method the call selects, because several
-        // may share this name.
-        bool ThroughPointer = IsArrow || isCxSelfReference(Base);
-        return MemberExpr::Create(
-            Context, Base, ThroughPointer, OpLoc, NestedNameSpecifierLoc(),
-            SourceLocation(), M, DeclAccessPair::make(M, M->getAccess()),
-            NameInfo, /*TemplateArgs=*/nullptr, M->getType(), VK_LValue,
-            OK_Ordinary, NOUR_None);
-      }
-  }
-
   if (getLangOpts().HLSL && IsArrow)
     return ExprError(Diag(OpLoc, diag::err_hlsl_operator_unsupported) << 2);
 
@@ -1773,6 +1751,23 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
   ExprResult Result = MaybeConvertParenListExprToParenExpr(S, Base);
   if (Result.isInvalid()) return ExprError();
   Base = Result.get();
+
+  // Cx: a method is an associated function held by the record, so ordinary
+  // member lookup does not reach it. Build the reference here; the call that
+  // must follow turns it into a call with the receiver's address.
+  if (getLangOpts().CX && !SS.isSet() && NameInfo.getName().isIdentifier()) {
+    QualType BaseTy = Base->getType();
+    bool ThroughPointer = IsArrow || isCxSelfReference(Base);
+    if (ThroughPointer)
+      BaseTy = BaseTy->isPointerType() ? BaseTy->getPointeeType() : QualType();
+    const RecordType *RT =
+        BaseTy.isNull() ? nullptr : BaseTy->getAs<RecordType>();
+    if (RT)
+      if (FunctionDecl *M = LookupCxMethod(RT->getDecl(), NameInfo.getName()))
+        // Access is checked on the method the call selects, because several
+        // may share this name.
+        return BuildCxMethodRef(Base, ThroughPointer, OpLoc, M, NameInfo);
+  }
 
   ActOnMemberAccessExtraArgs ExtraArgs = {S, Id, ObjCImpDecl};
   ExprResult Res = BuildMemberReferenceExpr(

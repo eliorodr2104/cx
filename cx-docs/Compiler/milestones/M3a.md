@@ -123,11 +123,11 @@ failed, 0 unexpected failures.
 - **The encoding is not demangler-friendly.** The symbol starts with `_Z`, so
   ordinary C++ demanglers will try and fail on it rather than print something
   useful. A Cx-aware tool is M19.
-- **Labels are not in the identity yet** — M3b. Until then two declarations
-  differing only in labels would mangle identically.
-- **No overload sets.** Two functions with the same base name in one owned file
-  are still a C redefinition error. Distinct symbols are a precondition for
-  M3c, not overloading itself.
+- ~~**Labels are not in the identity yet.**~~ Closed by [M3b](M3b.md): two
+  declarations differing only in labels mangle differently.
+- ~~**No overload sets.**~~ Closed by [M3c](M3c.md). Here two functions with
+  the same base name in one owned file were still a C redefinition error;
+  distinct symbols were the precondition, not overloading itself.
 - **Cross-module coherence is unchecked.** Two modules with the same name in
   one program produce the same symbols; module identity versioning is G09.
 

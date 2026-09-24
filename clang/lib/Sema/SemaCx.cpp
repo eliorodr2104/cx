@@ -368,20 +368,30 @@ bool Sema::isCxInitializer(const FunctionDecl *FD) const {
 }
 
 /// The method of \p RD that \p New redeclares, or null when it introduces a
-/// new one. Identity is the name, the parameter types and the argument
-/// labels; local parameter names may differ.
+/// new one. Identity is the name, the written parameter types and the
+/// argument labels; local parameter names may differ. The return type and the
+/// receiver's constness are not part of it, so a match may still conflict.
 static FunctionDecl *findCxMethodDeclaration(ASTContext &Ctx,
                                              const RecordDecl *RD,
                                              const FunctionDecl *New) {
+  const auto *NewFPT = New->getType()->getAs<FunctionProtoType>();
   for (Decl *D : RD->decls()) {
     auto *Old = dyn_cast<FunctionDecl>(D);
     if (!Old || Old == New || !Old->hasAttr<CxMethodAttr>())
       continue;
     if (Old->getDeclName() != New->getDeclName())
       continue;
-    if (!Ctx.hasSameType(Old->getType(), New->getType()))
-      continue;
     if (Old->getNumParams() != New->getNumParams())
+      continue;
+    const auto *OldFPT = Old->getType()->getAs<FunctionProtoType>();
+    if (!OldFPT || !NewFPT || OldFPT->isVariadic() != NewFPT->isVariadic())
+      continue;
+    // Parameter 0 is the receiver.
+    bool SameParams = true;
+    for (unsigned I = 1, E = Old->getNumParams(); I != E; ++I)
+      if (!Ctx.hasSameType(OldFPT->getParamType(I), NewFPT->getParamType(I)))
+        SameParams = false;
+    if (!SameParams)
       continue;
     bool SameLabels = true;
     for (unsigned I = 0, E = Old->getNumParams(); I != E; ++I)
@@ -506,6 +516,11 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
       cast<ParmVarDecl>(FTI.Params[0].Param)->getType()->isVoidType();
   for (unsigned I = 0; !VoidParameterList && I != FTI.NumParams; ++I) {
     if (auto *P = dyn_cast_or_null<ParmVarDecl>(FTI.Params[I].Param)) {
+      // The receiver is always `self`; a parameter of that name would hide it.
+      if (P->getIdentifier() && P->getIdentifier()->isStr("self")) {
+        Diag(P->getLocation(), diag::err_cx_self_parameter);
+        P->setInvalidDecl();
+      }
       P->setOwningFunction(FD);
       P->setScopeInfo(0, Params.size());
       Params.push_back(P);
@@ -529,11 +544,30 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
 
   ProcessDeclAttributes(S, FD, D);
 
+  // A method and a stored member of one name would make `value.name` mean
+  // two things; C rejects two fields of one name the same way.
+  for (Decl *D : RD->decls())
+    if ((isa<FieldDecl>(D) || isa<IndirectFieldDecl>(D)) &&
+        cast<NamedDecl>(D)->getDeclName() == FD->getDeclName()) {
+      Diag(FD->getLocation(), diag::err_duplicate_member) << FD->getDeclName();
+      Diag(D->getLocation(), diag::note_previous_declaration);
+      FD->setInvalidDecl();
+      break;
+    }
+
   // A continuation implements what the primary definition declared, so a
-  // matching method is a redeclaration and not a second entity.
+  // matching method is a redeclaration and not a second entity. A match that
+  // differs in its return type or in `~mutating` is the same method declared
+  // twice, not an overload: nothing at a call could choose between them.
   if (FunctionDecl *Prev = findCxMethodDeclaration(Context, RD, FD)) {
-    FD->setPreviousDeclaration(Prev);
-    FD->setAccess(Prev->getAccess());
+    if (!Context.hasSameType(Prev->getType(), FD->getType())) {
+      Diag(FD->getLocation(), diag::err_conflicting_types) << FD;
+      Diag(Prev->getLocation(), diag::note_previous_declaration);
+      FD->setInvalidDecl();
+    } else {
+      FD->setPreviousDeclaration(Prev);
+      FD->setAccess(Prev->getAccess());
+    }
   } else {
     DiagnoseCxNearMiss(RD, FD);
   }
@@ -622,6 +656,18 @@ FunctionDecl *Sema::getCurrentCxMethod() {
     return nullptr;
   auto *FD = dyn_cast_or_null<FunctionDecl>(CurContext);
   return FD && FD->hasAttr<CxMethodAttr>() ? FD : nullptr;
+}
+
+ExprResult Sema::BuildCxMethodRef(Expr *Base, bool IsArrow,
+                                  SourceLocation OpLoc, FunctionDecl *M,
+                                  const DeclarationNameInfo &NameInfo) {
+  // C classifies a member access by its base, so the value kind follows it.
+  ExprValueKind VK = IsArrow ? VK_LValue : Base->getValueKind();
+  return MemberExpr::Create(
+      Context, Base, IsArrow, OpLoc, NestedNameSpecifierLoc(), SourceLocation(),
+      M, DeclAccessPair::make(M, M->getAccess()), NameInfo,
+      /*TemplateArgs=*/nullptr, Context.BoundMemberTy, VK, OK_Ordinary,
+      NOUR_None);
 }
 
 ExprResult Sema::BuildCxMethodCall(Expr *Callee, SourceLocation LParenLoc,
@@ -745,6 +791,13 @@ bool Sema::isCxImplicitSelfMember(const DeclarationNameInfo &NameInfo) {
   return !Fields.empty();
 }
 
+bool Sema::isCxReceiverLookup(const LookupResult &R) {
+  FunctionDecl *Method = getCurrentCxMethod();
+  return Method && llvm::none_of(R, [&](const NamedDecl *D) {
+           return Method->Encloses(D->getDeclContext());
+         });
+}
+
 ExprResult
 Sema::BuildCxImplicitSelfMemberRef(const DeclarationNameInfo &NameInfo,
                                    Scope *S) {
@@ -773,12 +826,8 @@ Sema::BuildCxImplicitSelfMemberRef(const DeclarationNameInfo &NameInfo,
   // reach it and the reference has to be built here -- the same way
   // `self.method` builds it.
   if (Sibling)
-    return MemberExpr::Create(
-        Context, Base.get(), /*IsArrow=*/true, NameInfo.getLoc(),
-        NestedNameSpecifierLoc(), SourceLocation(), Sibling,
-        DeclAccessPair::make(Sibling, Sibling->getAccess()), NameInfo,
-        /*TemplateArgs=*/nullptr, Sibling->getType(), VK_LValue, OK_Ordinary,
-        NOUR_None);
+    return BuildCxMethodRef(Base.get(), /*IsArrow=*/true, NameInfo.getLoc(),
+                            Sibling, NameInfo);
 
   CXXScopeSpec SS;
   return BuildMemberReferenceExpr(Base.get(), Self->getType(),
@@ -918,6 +967,22 @@ bool Sema::CheckCxMemberAccess(const NamedDecl *Member, SourceLocation Loc,
 // Generated memberwise construction
 //===----------------------------------------------------------------------===//
 
+/// A variable with automatic storage that \p E evaluates, other than one \p E
+/// declares itself (a statement expression's bindings).
+static const VarDecl *findCxEvaluatedLocal(const Stmt *S, SourceRange Own) {
+  if (!S)
+    return nullptr;
+  if (const auto *DRE = dyn_cast<DeclRefExpr>(S))
+    if (const auto *VD = dyn_cast<VarDecl>(DRE->getDecl()))
+      if (VD->hasLocalStorage() && DRE->isNonOdrUse() != NOUR_Unevaluated &&
+          !Own.fullyContains(VD->getSourceRange()))
+        return VD;
+  for (const Stmt *Child : S->children())
+    if (const VarDecl *VD = findCxEvaluatedLocal(Child, Own))
+      return VD;
+  return nullptr;
+}
+
 void Sema::AddCxFieldDefault(Decl *Field, SourceLocation EqualLoc,
                              ExprResult Init) {
   auto *FD = dyn_cast_or_null<FieldDecl>(Field);
@@ -927,6 +992,17 @@ void Sema::AddCxFieldDefault(Decl *Field, SourceLocation EqualLoc,
     return;
   }
   if (Init.isInvalid()) {
+    FD->setInvalidDecl();
+    return;
+  }
+
+  // A default is evaluated wherever the type is constructed -- including in
+  // its own methods and in other functions -- where a local of the function
+  // that declares a local type does not exist.
+  if (const VarDecl *Local =
+          findCxEvaluatedLocal(Init.get(), Init.get()->getSourceRange())) {
+    Diag(Init.get()->getExprLoc(), diag::err_cx_field_default_local) << Local;
+    Diag(Local->getLocation(), diag::note_declared_at);
     FD->setInvalidDecl();
     return;
   }

@@ -106,6 +106,10 @@ failed, 0 unexpected failures.
 - Every case that is not a Cx continuation still reports C's `redefinition`
   error with its usual note, which `continuations-ownership.c` pins for both a
   foreign C header and another module's type.
+- **C23 accepts a compatible redefinition of a tag**, which a continuation
+  always looks like. As shipped here, that rule was tried first, so no
+  continuation worked in `-std=c23` or `gnu23`. Fixed in [M4.4](M4.4.md): in
+  an owned file the continuation wins, and an unowned file keeps C's rule.
 - A continuation cannot introduce storage, so no C program's layout or
   aggregate initialization can change.
 

@@ -118,13 +118,13 @@ failed, 0 unexpected failures.
 
 ## Known limitations
 
-- **No continuations yet.** A method must be defined where it is declared;
-  reopening a type in another file is M4b, and until then a declaration without
-  a body has no way to acquire one.
-- **No access control.** Every method is public; `private`, `internal` and
-  `private(set)` are M4b. The access specifier is set to public so that linkage
-  can be computed at all.
-- **No generated construction.** `Counter(value: 0)` does not exist; M4c.
+- ~~**No continuations yet.**~~ Closed by [M4b](M4b.md): a type reopened
+  in its own module implements the members its primary definition declared.
+- ~~**No access control.**~~ Closed by [M4c](M4c.md): `private`, `internal`
+  and `private(set)`. Here every method was public, which is what let linkage
+  be computed at all.
+- ~~**No generated construction.**~~ Closed by [M4d](M4d.md):
+  `Counter(value: 0)`.
 - **No `deinit`, no copy or destruction hooks.** Value operations are M7.
 - **Methods on classes do not exist**, because classes do not exist yet (M11).
 - A method written `(void)` crashed the compiler as shipped here, and an

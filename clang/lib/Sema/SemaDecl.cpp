@@ -959,6 +959,14 @@ Sema::NameClassification Sema::ClassifyName(Scope *S, CXXScopeSpec &SS,
       LookupBuiltin(Result);
   }
 
+  // Cx: inside a method, a member of the receiver wins over a declaration from
+  // outside the method. Leave it to the expression path, which resolves the
+  // receiver; a type name is not an expression and keeps its meaning.
+  if (SS.isEmpty() && !Result.empty() && isCxReceiverLookup(Result) &&
+      !isResultTypeOrTemplate(Result, NextToken) &&
+      isCxImplicitSelfMember(NameInfo))
+    return NameClassification::Unknown();
+
   bool SecondTry = false;
   bool IsFilteredTemplateName = false;
 
@@ -5353,6 +5361,17 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
   // Track whether this decl-specifier declares anything.
   bool DeclaresAnything = true;
 
+  // Cx: an anonymous member is stored, so a continuation, which reopens an
+  // already complete type, cannot add one: the layout is fixed.
+  auto CxContinuationAddsMember = [&]() {
+    auto *Owner = dyn_cast<RecordDecl>(CurContext);
+    if (!getLangOpts().CX || !Owner || !Owner->isCompleteDefinition())
+      return false;
+    Diag(DS.getBeginLoc(), diag::err_cx_continuation_adds_field) << Owner;
+    Diag(Owner->getLocation(), diag::note_cx_primary_definition) << Owner;
+    return true;
+  };
+
   // Handle anonymous struct definitions.
   if (RecordDecl *Record = dyn_cast_or_null<RecordDecl>(Tag)) {
     if (!Record->getDeclName() && Record->isCompleteDefinition() &&
@@ -5366,6 +5385,8 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
         // DeclStmt that gets created in this case.
         // FIXME: Also return the IndirectFieldDecls created by
         // BuildAnonymousStructOr union, for the same reason?
+        if (CxContinuationAddsMember())
+          return Tag;
         if (CurContext->isFunctionOrMethod())
           AnonRecord = Record;
         return BuildAnonymousStructOrUnion(S, DS, AS, Record,
@@ -5398,6 +5419,8 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       if (Record && getLangOpts().MSAnonymousStructs) {
         Diag(DS.getBeginLoc(), diag::ext_ms_anonymous_record)
             << Record->isUnion() << DS.getSourceRange();
+        if (CxContinuationAddsMember())
+          return Tag;
         return BuildMicrosoftCAnonymousStruct(S, DS, Record);
       }
 
@@ -13382,8 +13405,11 @@ QualType Sema::deduceVarTypeFromInitializer(VarDecl *VDecl,
   // Diagnose auto array declarations in C23, unless it's a supported extension.
   if (getLangOpts().C23 && Type->isArrayType() &&
       !isa_and_present<StringLiteral, InitListExpr>(Init)) {
+      // The select puts the template-argument case between '__auto_type'
+      // and the Cx keywords.
+      int Keyword = (int)Deduced->getContainedAutoType()->getKeyword();
       Diag(Range.getBegin(), diag::err_auto_not_allowed)
-          << (int)Deduced->getContainedAutoType()->getKeyword()
+          << (Keyword >= (int)AutoTypeKeyword::CxVar ? Keyword + 1 : Keyword)
           << /*in array decl*/ 23 << Range;
     return QualType();
   }
@@ -18715,7 +18741,16 @@ Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK, SourceLocation KWLoc,
                 // check in C11 6.2.7/1 (or 6.1.2.6/1 in C89).
                 NamedDecl *Hidden = nullptr;
                 bool HiddenDefVisible = false;
-                if (SkipBody &&
+                // Cx: a block reopening a complete type of this module is a
+                // continuation. In an owned file that wins over C23's
+                // compatible redefinition, which it would otherwise always
+                // look like; an unowned file keeps C's rule.
+                bool CxContinuation = SkipBody &&
+                                      !S->containedInPrototypeScope() &&
+                                      isCxContinuationOf(Def, NameLoc);
+                bool CxOwnedContinuation =
+                    CxContinuation && Context.getCxModuleOwner(NameLoc);
+                if (SkipBody && !CxOwnedContinuation &&
                     (isRedefinitionAllowedFor(Def, &Hidden, HiddenDefVisible) ||
                      getLangOpts().C23)) {
                   // There is a definition of this tag, but it is not visible.
@@ -18742,10 +18777,12 @@ Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK, SourceLocation KWLoc,
                   // Carry on and handle it like a normal definition. We'll
                   // skip starting the definition later.
 
-                } else if (SkipBody && isCxContinuationOf(Def, NameLoc)) {
+                } else if (CxContinuation) {
                   // Cx: a block naming an already complete owned type is a
                   // continuation that implements its members. It adds no
-                  // storage, so the type's definition is left alone.
+                  // storage, so the type's definition is left alone. A
+                  // definition in a parameter list is C's new, local type
+                  // instead, which C only warns about below.
                   SkipBody->CxContinuation = true;
                   SkipBody->Previous = Def;
                   return Def;
@@ -19370,9 +19407,19 @@ ExprResult Sema::VerifyBitField(SourceLocation FieldLoc,
 
 Decl *Sema::ActOnField(Scope *S, Decl *TagD, SourceLocation DeclStart,
                        Declarator &D, Expr *BitfieldWidth, bool HasDefault) {
+  auto *Record = cast_if_present<RecordDecl>(TagD);
   FieldDecl *Res = HandleField(
-      S, cast_if_present<RecordDecl>(TagD), DeclStart, D, BitfieldWidth,
+      S, Record, DeclStart, D, BitfieldWidth,
       HasDefault ? ICIS_CopyInit : ICIS_NoInit, AS_public);
+  // Cx: a field may not share its name with a method declared before it; the
+  // method side of the same rule is in ActOnCxMethodDeclarator.
+  if (Res && getLangOpts().CX && Res->getDeclName())
+    if (FunctionDecl *M = LookupCxMethod(Record, Res->getDeclName())) {
+      Diag(Res->getLocation(), diag::err_duplicate_member)
+          << Res->getDeclName();
+      Diag(M->getLocation(), diag::note_previous_declaration);
+      Res->setInvalidDecl();
+    }
   return Res;
 }
 

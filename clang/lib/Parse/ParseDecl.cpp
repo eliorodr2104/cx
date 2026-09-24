@@ -5018,24 +5018,18 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
     // Cx: access specifiers, then `~mutating`, then the member itself.
     std::optional<unsigned> AccessRead, AccessWrite;
     SourceLocation AccessLoc;
-    ParseCxAccessSpecifiers(AccessRead, AccessWrite, AccessLoc);
-
     // Cx: `~mutating` promises that the receiver's stored value is not
     // modified, which is what lets the method be called on a constant value.
-    bool NonMutating = false;
-    if (getLangOpts().CX && Tok.is(tok::tilde) &&
-        NextToken().is(tok::identifier) &&
-        NextToken().getIdentifierInfo()->isStr("mutating")) {
-      ConsumeToken(); // '~'
-      ConsumeToken(); // 'mutating'
-      NonMutating = true;
-    }
+    bool NonMutating =
+        ParseCxMemberIntroducers(AccessRead, AccessWrite, AccessLoc);
 
     TryCxInitializerIntroducer();
 
     if (!Tok.is(tok::at)) {
       Decl *CxMethod = nullptr;
+      unsigned NumDeclarators = 0;
       auto CFieldCallback = [&](ParsingFieldDeclarator &FD) -> Decl * {
+        ++NumDeclarators;
         // Cx: a function declarator inside a struct declares a method, an
         // associated function with a `self` receiver that adds no storage.
         // C rejects a function member outright, so nothing valid changes.
@@ -5049,6 +5043,9 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
           FD.complete(CxMethod);
           return CxMethod;
         }
+
+        if (NonMutating)
+          Diag(FD.D.getIdentifierLoc(), diag::err_cx_non_mutating_field);
 
         // Install the declarator into the current TagDecl.
         Decl *Field = Actions.ActOnField(
@@ -5071,6 +5068,8 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
       // A method may be defined where it is declared. The record is not
       // complete yet, so cache the body and replay it below.
       if (CxMethod && Tok.is(tok::l_brace)) {
+        if (DiagnoseCxMethodBodyInGroup(NumDeclarators))
+          continue;
         CxMethodBodies.emplace_back(CxMethod, CachedTokens());
         CachedTokens &Toks = CxMethodBodies.back().second;
         Toks.push_back(Tok);
@@ -6024,6 +6023,34 @@ bool Parser::ParseCxAccessSpecifiers(std::optional<unsigned> &Read,
   return Any;
 }
 
+bool Parser::DiagnoseCxMethodBodyInGroup(unsigned NumDeclarators) {
+  if (NumDeclarators == 1)
+    return false;
+  // `int f(), x { ... }` would otherwise attach the body to whichever method
+  // the group happened to declare.
+  Diag(Tok, diag::err_cx_method_body_in_group);
+  ConsumeBrace();
+  SkipUntil(tok::r_brace);
+  return true;
+}
+
+bool Parser::ParseCxMemberIntroducers(std::optional<unsigned> &Read,
+                                      std::optional<unsigned> &Write,
+                                      SourceLocation &Loc) {
+  ParseCxAccessSpecifiers(Read, Write, Loc);
+  if (!getLangOpts().CX || Tok.isNot(tok::tilde) ||
+      NextToken().isNot(tok::identifier) ||
+      !NextToken().getIdentifierInfo()->isStr("mutating"))
+    return false;
+  ConsumeToken(); // '~'
+  ConsumeToken(); // 'mutating'
+  SourceLocation LateLoc;
+  ParseCxAccessSpecifiers(Read, Write, LateLoc);
+  if (Loc.isInvalid())
+    Loc = LateLoc;
+  return true;
+}
+
 bool Parser::TryCxInitializerIntroducer() {
   if (!getLangOpts().CX || Tok.isNot(tok::identifier) ||
       !Tok.getIdentifierInfo()->isStr("init") || NextToken().isNot(tok::l_paren))
@@ -6064,20 +6091,15 @@ void Parser::ParseCxContinuationBody(RecordDecl *RD) {
 
     std::optional<unsigned> AccessRead, AccessWrite;
     SourceLocation AccessLoc;
-    ParseCxAccessSpecifiers(AccessRead, AccessWrite, AccessLoc);
-
-    bool NonMutating = false;
-    if (Tok.is(tok::tilde) && NextToken().is(tok::identifier) &&
-        NextToken().getIdentifierInfo()->isStr("mutating")) {
-      ConsumeToken();
-      ConsumeToken();
-      NonMutating = true;
-    }
+    bool NonMutating =
+        ParseCxMemberIntroducers(AccessRead, AccessWrite, AccessLoc);
 
     TryCxInitializerIntroducer();
 
     Decl *CxMethod = nullptr;
+    unsigned NumDeclarators = 0;
     auto MemberCallback = [&](ParsingFieldDeclarator &FD) -> Decl * {
+      ++NumDeclarators;
       if (FD.D.isFunctionDeclarator()) {
         CxMethod = Actions.ActOnCxMethodDeclarator(getCurScope(), RD, FD.D,
                                                    NonMutating);
@@ -6098,6 +6120,8 @@ void Parser::ParseCxContinuationBody(RecordDecl *RD) {
     ParseStructDeclaration(DS, MemberCallback, /*LateFieldAttrs=*/nullptr);
 
     if (CxMethod && Tok.is(tok::l_brace)) {
+      if (DiagnoseCxMethodBodyInGroup(NumDeclarators))
+        continue;
       CachedTokens Toks;
       Toks.push_back(Tok);
       ConsumeBrace();
@@ -6139,6 +6163,10 @@ void Parser::ParseCxMethodBody(Decl *MethodDecl, CachedTokens &Toks) {
   PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true, /*IsReinject=*/true);
   ConsumeAnyToken(/*ConsumeCodeCompletionTok=*/true);
 
+  // The record may be defined inside `sizeof` or `typeof`, but its methods
+  // are real code: a body is evaluated whatever context the type sits in.
+  EnterExpressionEvaluationContext Evaluated(
+      Actions, Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
   ParseScope BodyScope(this, Scope::FnScope | Scope::DeclScope |
                                  Scope::CompoundStmtScope);
   Sema::FPFeaturesStateRAII SaveFPFeatures(Actions);

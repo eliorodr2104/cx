@@ -4337,6 +4337,13 @@ public:
   /// The Cx method whose body is being parsed, or null.
   FunctionDecl *getCurrentCxMethod();
 
+  /// A reference to Cx method \p M through \p Base. It is a bound-member
+  /// placeholder, like a C++ non-static member function: the call that must
+  /// follow resolves it, and every other use is rejected in one place.
+  ExprResult BuildCxMethodRef(Expr *Base, bool IsArrow, SourceLocation OpLoc,
+                              FunctionDecl *M,
+                              const DeclarationNameInfo &NameInfo);
+
   /// Turn `base.method(args)` into a call of the associated function with the
   /// receiver's address. \p Callee is a MemberExpr naming a Cx method.
   ExprResult BuildCxMethodCall(Expr *Callee, SourceLocation LParenLoc,
@@ -4350,6 +4357,11 @@ public:
   /// method being parsed. Asked before C turns `name(` into an implicit
   /// function declaration.
   bool isCxImplicitSelfMember(const DeclarationNameInfo &NameInfo);
+
+  /// Whether an unqualified lookup \p R, made inside a Cx method body, leaves
+  /// the name to the receiver: nothing it found is declared by the method
+  /// itself. Only the method's own parameters and bindings shadow a member.
+  bool isCxReceiverLookup(const LookupResult &R);
 
   /// Inside a Cx method body, resolve an unqualified name against the
   /// receiver. Returns an unusable, valid result when the name is not a

@@ -2724,6 +2724,9 @@ def err_cx_construction_missing_field : Error<
   "missing value for field %0 in construction of %1; it has no default">;
 def err_cx_field_default_not_field : Error<
   "only a stored field can have a default value">;
+def err_cx_field_default_local : Error<
+  "a field default cannot refer to %0, a local variable of the enclosing "
+  "function">;
 def err_cx_construction_unexpected_arg : Error<
   "too many values in construction of %0">;
 def err_cx_construction_label : Error<
@@ -2763,6 +2766,13 @@ def err_cx_method_needs_prototype : Error<
   "a Cx method needs a parameter list">;
 def err_cx_method_name : Error<
   "a Cx method needs an ordinary name">;
+def err_cx_self_parameter : Error<
+  "'self' names the receiver of a Cx method, so a parameter cannot be named "
+  "'self'">;
+def err_cx_non_mutating_field : Error<
+  "'~mutating' applies to a method, not a field">;
+def err_cx_method_body_in_group : Error<
+  "a method body must follow a declaration with a single declarator">;
 def err_cx_write_through_non_mutating : Error<
   "cannot modify %0 through the receiver of '~mutating' method %1">;
 def note_cx_remove_non_mutating : Note<
@@ -2847,10 +2857,11 @@ def err_implied_std_initializer_list_not_found : Error<
 def err_malformed_std_class_template : Error<
   "std::%0 must be a class template with a single type parameter">;
 def err_auto_init_list_from_c : Error<
-  "cannot use %select{'auto'|<ERROR>|'__auto_type'}0 with "
+  "cannot use %select{'auto'|<ERROR>|'__auto_type'|'var'|'let'}0 with "
   "%select{initializer list|array}1 in C">;
 def err_auto_bitfield : Error<
-  "cannot pass bit-field as __auto_type initializer in C">;
+  "cannot pass bit-field as "
+  "%select{__auto_type|<ERROR>|__auto_type|'var'|'let'}0 initializer in C">;
 
 // C++1y decltype(auto) type
 def err_decltype_auto_invalid : Error<

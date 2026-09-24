@@ -5350,7 +5350,7 @@ Sema::DeduceAutoType(TypeLoc Type, Expr *Init, QualType &Result,
       }
     } else {
       if (!getLangOpts().CPlusPlus && Init->refersToBitField()) {
-        Diag(Loc, diag::err_auto_bitfield);
+        Diag(Loc, diag::err_auto_bitfield) << (int)AT->getKeyword();
         return TemplateDeductionResult::AlreadyDiagnosed;
       }
       QualType FuncParam =

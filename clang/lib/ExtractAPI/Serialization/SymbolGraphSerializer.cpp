@@ -198,7 +198,10 @@ std::optional<Array> serializeAvailability(const AvailabilityInfo &Avail) {
 /// Get the language name string for interface language references.
 StringRef getLanguageName(Language Lang) {
   switch (Lang) {
+  // Cx is a superset of C, and its extensions have no symbol-graph
+  // vocabulary yet.
   case Language::C:
+  case Language::Cx:
     return "c";
   case Language::ObjC:
     return "objective-c";
@@ -208,7 +211,6 @@ StringRef getLanguageName(Language Lang) {
     return "objective-c++";
 
   // Unsupported language currently
-  case Language::Cx:
   case Language::OpenCL:
   case Language::OpenCLCXX:
   case Language::CUDA:

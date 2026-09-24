@@ -2091,6 +2091,17 @@ private:
                                std::optional<unsigned> &Write,
                                SourceLocation &Loc);
 
+  /// A method body after a member declaration with several declarators has
+  /// no single method to belong to. Diagnoses and skips it; returns true when
+  /// it did.
+  bool DiagnoseCxMethodBodyInGroup(unsigned NumDeclarators);
+
+  /// Consume the Cx introducers of a struct member: access specifiers and
+  /// `~mutating`, in either order. Returns whether `~mutating` was written.
+  bool ParseCxMemberIntroducers(std::optional<unsigned> &Read,
+                                std::optional<unsigned> &Write,
+                                SourceLocation &Loc);
+
   /// Parse `TypeName(field: value, ...)`, the generated memberwise
   /// construction of a Cx struct. The current token is the type annotation.
   ExprResult ParseCxConstructionExpression();

@@ -30,6 +30,7 @@
 #include "clang/Basic/ABI.h"
 #include "clang/Basic/DiagnosticAST.h"
 #include "clang/Basic/Module.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Thunk.h"
 #include "llvm/ADT/StringExtras.h"
@@ -686,6 +687,18 @@ ItaniumMangleContextImpl::getEffectiveDeclContext(const Decl *D) {
       isa<OMPDeclareMapperDecl>(DC)) {
     return getEffectiveDeclContext(cast<Decl>(DC));
   }
+
+  // In C a tag declared in a parameter list belongs to the function, whose
+  // encoding mangles that very parameter type: as a local name the two would
+  // recurse forever. Mangle it at file scope. A tag in the body can never be
+  // part of the function's own type, so it stays local.
+  if (isa<TagDecl>(D) && !getASTContext().getLangOpts().CPlusPlus)
+    if (const auto *FD = dyn_cast<FunctionDecl>(DC)) {
+      const Stmt *Body = FD->getBody();
+      if (!Body || getASTContext().getSourceManager().isBeforeInTranslationUnit(
+                       D->getLocation(), Body->getBeginLoc()))
+        return getASTContext().getTranslationUnitDecl();
+    }
 
   if (const auto *VD = dyn_cast<VarDecl>(D)) {
     if (const CXXRecordDecl *Lambda = getLambdaForInitCapture(VD)) {

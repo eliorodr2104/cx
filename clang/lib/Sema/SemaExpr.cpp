@@ -537,17 +537,6 @@ ExprResult Sema::DefaultFunctionArrayConversion(Expr *E, bool Diagnose) {
         if (!checkAddressOfFunctionIsAvailable(FD, Diagnose, E->getExprLoc()))
           return ExprError();
 
-    // Cx: a method reference is only ever the callee of a call. It is bound to
-    // a receiver, so it cannot decay to a plain function pointer.
-    if (auto *ME = dyn_cast<MemberExpr>(E->IgnoreParenCasts()))
-      if (auto *M = dyn_cast<FunctionDecl>(ME->getMemberDecl()))
-        if (M->hasAttr<CxMethodAttr>()) {
-          if (Diagnose)
-            Diag(E->getExprLoc(), diag::err_cx_method_not_called)
-                << M << E->getSourceRange();
-          return ExprError();
-        }
-
     E = ImpCastExprToType(E, Context.getPointerType(Ty),
                           CK_FunctionToPointerDecay).get();
   } else if (Ty->isArrayType()) {
@@ -2933,9 +2922,10 @@ ExprResult Sema::ActOnIdExpression(Scope *S, CXXScopeSpec &SS,
     return ActOnCXXNullPtrLiteral(NameLoc);
 
   // Cx: inside a method body an unqualified name may be a field or another
-  // method of the receiver. A local parameter or binding shadows it, which is
-  // exactly what an empty lookup has already established.
-  if (R.empty() && SS.isEmpty() && II && getLangOpts().CX)
+  // method of the receiver. Only a parameter or binding of the method itself
+  // shadows it; a file-scope declaration, or a local of a function enclosing a
+  // local type, does not.
+  if (SS.isEmpty() && II && isCxReceiverLookup(R))
     if (ExprResult Recv = BuildCxImplicitSelfMemberRef(NameInfo, S);
         Recv.isUsable() || Recv.isInvalid())
       return Recv;
@@ -15020,7 +15010,10 @@ QualType Sema::CheckAddressOfOperand(ExprResult &OrigOp, SourceLocation OpLoc) {
     if (PTy->getKind() == BuiltinType::UnknownAny)
       return Context.UnknownAnyTy;
 
-    if (PTy->getKind() == BuiltinType::BoundMember) {
+    // In C a bound member is a Cx method, which CheckPlaceholderExpr rejects
+    // with its own message.
+    if (PTy->getKind() == BuiltinType::BoundMember &&
+        getLangOpts().CPlusPlus) {
       Diag(OpLoc, diag::err_invalid_form_pointer_member_function)
         << OrigOp.get()->getSourceRange();
       return QualType();
@@ -22019,6 +22012,15 @@ ExprResult Sema::CheckPlaceholderExpr(Expr *E) {
   case BuiltinType::BoundMember: {
     ExprResult result = E;
     const Expr *BME = E->IgnoreParens();
+    // Cx: a method reference is only ever the callee of a call. It is bound
+    // to a receiver, so it is not a function designator: it cannot be
+    // assigned, have its address taken, decay, or be an operand of sizeof.
+    if (const auto *ME = dyn_cast<MemberExpr>(BME))
+      if (ME->getMemberDecl()->hasAttr<CxMethodAttr>()) {
+        Diag(E->getExprLoc(), diag::err_cx_method_not_called)
+            << ME->getMemberDecl() << E->getSourceRange();
+        return ExprError();
+      }
     PartialDiagnostic PD = PDiag(diag::err_bound_member_function);
     // Try to give a nicer diagnostic if it is a bound member that we recognize.
     if (isa<CXXPseudoDestructorExpr>(BME)) {
