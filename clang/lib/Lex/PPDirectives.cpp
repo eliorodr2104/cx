@@ -4358,6 +4358,13 @@ void Preprocessor::HandleCxModuleDirective(Token ModuleTok,
 
   CheckEndOfDirective("module");
 
+  // A module name is part of every owned symbol, where `$` separates it from
+  // the entity's name.
+  if (Name->getName().contains('$')) {
+    Diag(NameTok, diag::err_cx_invalid_module_name) << Name->getName();
+    return;
+  }
+
   FileID FID = SourceMgr.getFileID(HashLoc);
   CxModuleOwnership::Owner Existing = CxModules.getOwner(FID);
   if (Existing) {

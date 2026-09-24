@@ -4717,6 +4717,24 @@ bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
     }
   }
 
+  // Cx: what the implementation cannot yet represent is rejected rather than
+  // compiled to colliding symbols or merged entities.
+  if (Opts.CX) {
+    if (T.isWindowsMSVCEnvironment())
+      Diags.Report(diag::err_drv_cx_unsupported_msvc_target) << T.str();
+    if (Opts.Modules)
+      Diags.Report(diag::err_drv_cx_unsupported_clang_modules);
+    // A module name is part of every owned symbol, where `$` separates it
+    // from the entity's name.
+    StringRef Name = Opts.CxModuleName;
+    if (!Name.empty() &&
+        (!isAsciiIdentifierStart(Name.front()) ||
+         !llvm::all_of(Name.drop_front(), [](char C) {
+           return isAsciiIdentifierContinue(C);
+         })))
+      Diags.Report(diag::err_cx_invalid_module_name) << Name;
+  }
+
   return Diags.getNumErrors() == NumErrorsBefore;
 }
 

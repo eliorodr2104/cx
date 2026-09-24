@@ -888,6 +888,11 @@ def err_drv_dxc_Fre_requires_Fo_metal
     : Error<"-Fre option requires -Fo option when targeting Metal">;
 def err_drv_dxc_invalid_shader_hash
     : Error<"cannot specify both /Zss and /Zsb">;
+def err_drv_cx_unsupported_msvc_target : Error<
+  "target '%0' is not supported in Cx mode yet: the Microsoft ABI has no "
+  "encoding for Cx module and argument-label identity">;
+def err_drv_cx_unsupported_clang_modules : Error<
+  "Clang modules ('-fmodules') are not supported in Cx mode yet">;
 def err_drv_hlsl_unsupported_target : Error<
   "HLSL code generation is unsupported for target '%0'">;
 def err_drv_hlsl_bad_shader_required_in_target : Error<

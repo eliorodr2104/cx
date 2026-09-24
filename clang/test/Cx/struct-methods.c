@@ -47,7 +47,7 @@ int use(void) {
 // CHECK-DAG: define {{.*}}@"_ZN7Counter21_Cx0$Counters$currentEPK7Counter"(ptr noundef %self)
 
 // A call passes the receiver's address; nothing is copied.
-// CHECK: call void @"_ZN7Counter23_Cx0$Counters$incrementEP7Counter"(ptr noundef %c)
+// CHECK-DAG: call void @"_ZN7Counter23_Cx0$Counters$incrementEP7Counter"(ptr noundef %c)
 
 // `(void)` is an empty parameter list written the C way: the declarator
 // carries a void pseudo-parameter that the receiver must not be added to.

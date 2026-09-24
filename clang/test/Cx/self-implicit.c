@@ -34,5 +34,6 @@ typedef struct Counter {
 
 int use(Counter *c) {
   c->twice();
+  c->notify();
   return c->shadowed();
 }

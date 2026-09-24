@@ -607,8 +607,14 @@ void Preprocessor::EnterMainSourceFile() {
       markIncluded(*FE);
 
     // A build-assigned Cx module applies to the primary source file only.
-    // Headers it includes state their own owner, or have none.
-    if (getLangOpts().CX && !getLangOpts().CxModuleName.empty())
+    // Headers it includes state their own owner, or have none. Building a PCH
+    // makes a header the primary file, and build systems pass it the flags of
+    // the source files it serves, so there the option does not apply; a
+    // preamble is the start of the real primary file and keeps it.
+    bool BuildingPCH =
+        TUKind == TU_Prefix && !getPreprocessorOpts().GeneratePreamble;
+    if (getLangOpts().CX && !getLangOpts().CxModuleName.empty() &&
+        !BuildingPCH)
       CxModules.setOwner(MainFileID,
                          {getIdentifierInfo(getLangOpts().CxModuleName),
                           SourceLocation(), /*FromBuild=*/true});

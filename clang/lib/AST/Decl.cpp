@@ -1466,11 +1466,26 @@ LinkageInfo LinkageComputer::computeLVForDecl(const NamedDecl *D,
 
   // A Cx struct method is an associated function held by its record, not a
   // C++ class member. It has the linkage a file-scope function would have, so
-  // that a method declared in a header links to a definition elsewhere.
+  // that a method declared in a header links to a definition elsewhere --
+  // unless no other translation unit could name its type: an unnamed record
+  // with no typedef name for linkage, or a record local to a function.
   if (const auto *FD = dyn_cast<FunctionDecl>(D))
-    if (FD->hasAttr<CxMethodAttr>())
-      return FD->getStorageClass() == SC_Static ? LinkageInfo::internal()
-                                                : LinkageInfo::external();
+    if (FD->hasAttr<CxMethodAttr>()) {
+      if (FD->getStorageClass() == SC_Static)
+        return LinkageInfo::internal();
+      const auto *RD = cast<RecordDecl>(FD->getDeclContext());
+      if (RD->getParentFunctionOrMethod())
+        return LinkageInfo::internal();
+      if (!RD->getDeclName()) {
+        // Computing it through the record records that the record's linkage
+        // is fixed, so a typedef that would name it later is diagnosed, as
+        // for a C++ class, instead of changing this answer.
+        if (!isExternallyVisible(getLVForDecl(RD, computation).getLinkage()) ||
+            !RD->getTypedefNameForAnonDecl())
+          return LinkageInfo::internal();
+      }
+      return LinkageInfo::external();
+    }
 
   // Objective-C: treat all Objective-C declarations as having external
   // linkage.

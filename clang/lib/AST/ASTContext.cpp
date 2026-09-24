@@ -13084,10 +13084,34 @@ QualType ASTContext::GetBuiltinType(unsigned Id,
   return getFunctionType(ResType, ArgTypes, EPI);
 }
 
+/// Whether the definition of Cx method \p FD is written in its type's own
+/// body, as opposed to a continuation. Such a definition is part of the type,
+/// so every translation unit that includes the type has it.
+static bool isCxMethodDefinedInTypeBody(const ASTContext &Context,
+                                        const FunctionDecl *FD) {
+  const FunctionDecl *Def = FD->getDefinition();
+  const auto *RD = cast<RecordDecl>(FD->getDeclContext())->getDefinition();
+  if (!Def || !RD || RD->getBraceRange().isInvalid())
+    return false;
+  const SourceManager &SM = Context.getSourceManager();
+  SourceLocation Loc = SM.getExpansionLoc(Def->getLocation());
+  SourceRange Body = RD->getBraceRange();
+  return SM.isBeforeInTranslationUnit(SM.getExpansionLoc(Body.getBegin()),
+                                      Loc) &&
+         SM.isBeforeInTranslationUnit(Loc, SM.getExpansionLoc(Body.getEnd()));
+}
+
 static GVALinkage basicGVALinkageForFunction(const ASTContext &Context,
                                              const FunctionDecl *FD) {
   if (!FD->isExternallyVisible())
     return GVA_Internal;
+
+  // Cx: a method defined in its type's body is emitted by every translation
+  // unit that uses it and merged at link time, like a C++ member function
+  // defined in its class. One implemented in a continuation is an ordinary
+  // strong definition.
+  if (FD->hasAttr<CxMethodAttr>() && isCxMethodDefinedInTypeBody(Context, FD))
+    return GVA_DiscardableODR;
 
   // Non-user-provided functions get emitted as weak definitions with every
   // use, no matter whether they've been explicitly instantiated etc.

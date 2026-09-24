@@ -11164,9 +11164,21 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
 
   if (NewFD->hasAttr<OverloadableAttr>() &&
       !NewFD->getType()->getAs<FunctionProtoType>()) {
-    Diag(NewFD->getLocation(),
-         diag::err_attribute_overloadable_no_prototype)
-      << NewFD;
+    // Cx gives every owned function the attribute implicitly, so name the
+    // rule the user can act on rather than an attribute they never wrote.
+    if (getLangOpts().CX && NewFD->getAttr<OverloadableAttr>()->isImplicit()) {
+      SourceLocation RParen;
+      if (FunctionTypeLoc FTL = NewFD->getFunctionTypeLoc())
+        RParen = FTL.getRParenLoc();
+      auto D = Diag(NewFD->getLocation(), diag::err_cx_function_needs_prototype)
+               << NewFD;
+      if (RParen.isValid() && NewFD->getNumParams() == 0)
+        D << FixItHint::CreateInsertion(RParen, "void");
+    } else {
+      Diag(NewFD->getLocation(),
+           diag::err_attribute_overloadable_no_prototype)
+          << NewFD;
+    }
     NewFD->dropAttr<OverloadableAttr>();
   }
 
@@ -16189,8 +16201,10 @@ ShouldWarnAboutMissingPrototype(const FunctionDecl *FD,
   if (!FD->isGlobal())
     return false;
 
-  // Don't warn about C++ member functions.
-  if (isa<CXXMethodDecl>(FD))
+  // Don't warn about C++ member functions, or Cx methods: both are declared
+  // by their type. Asking a method's linkage here would also fix it before a
+  // typedef can still name an unnamed record for linkage.
+  if (isa<CXXMethodDecl>(FD) || FD->hasAttr<CxMethodAttr>())
     return false;
 
   // Don't warn about 'main'.

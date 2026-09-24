@@ -36,24 +36,66 @@ bool Sema::isCxContextualKeyword(const IdentifierInfo *II, Scope *S) {
   return R.empty();
 }
 
-/// The module that owns the entity \p Previous names, following the rule that
+static const IdentifierInfo *getCxLabel(const ParmVarDecl *PVD);
+
+/// Whether \p Prev is a declaration of the same entity as \p New. A variable
+/// has one entity per name; an owned function is one of an overload set, and
+/// only a declaration with its type and labels declares the same one.
+static bool isCxSameEntity(ASTContext &Ctx, const VarDecl *Prev,
+                           const VarDecl *New) {
+  return true;
+}
+static bool isCxSameEntity(ASTContext &Ctx, const FunctionDecl *Prev,
+                           const FunctionDecl *New) {
+  if (!Prev->hasAttr<CxLinkageAttr>())
+    return true; // A C function has no overloads; any one is the entity.
+  if (!Ctx.hasSameType(Prev->getType(), New->getType()) ||
+      Prev->getNumParams() != New->getNumParams())
+    return false;
+  for (unsigned I = 0, E = New->getNumParams(); I != E; ++I)
+    if (getCxLabel(Prev->getParamDecl(I)) != getCxLabel(New->getParamDecl(I)))
+      return false;
+  return true;
+}
+
+/// The module that owns the entity \p New declares, following the rule that
 /// an entity's identity is decided by its first declaration and never by a
-/// later one. \p SawPrevious reports whether any previous declaration of the
-/// same kind was found at all, which is what tells "no owner because the
+/// later one. \p Prev receives that first declaration, and \p SawPrevious
+/// whether one was found at all, which is what tells "no owner because the
 /// entity is a C one" from "no owner because it is new here".
 template <typename DeclT>
-static const IdentifierInfo *cxModuleOfFirstDecl(const LookupResult &Previous,
-                                                 bool &SawPrevious) {
+static const IdentifierInfo *cxModuleOfFirstDecl(ASTContext &Ctx,
+                                                 const LookupResult &Previous,
+                                                 const DeclT *New,
+                                                 bool &SawPrevious,
+                                                 const DeclT *&First) {
   SawPrevious = false;
+  First = nullptr;
   for (const NamedDecl *ND : Previous) {
     const auto *Prev = dyn_cast<DeclT>(ND->getUnderlyingDecl());
-    if (!Prev)
+    if (!Prev || !isCxSameEntity(Ctx, Prev, New))
       continue;
     SawPrevious = true;
+    First = Prev;
     if (const auto *A = Prev->template getAttr<CxLinkageAttr>())
       return A->getModule();
   }
   return nullptr;
+}
+
+/// Report an entity that a module declares after another module declared it
+/// first. Both would claim the same symbol, and which one wins would depend on
+/// include order.
+template <typename DeclT>
+static void diagnoseCxOtherModule(Sema &S, const DeclT *New, const DeclT *First,
+                                  const IdentifierInfo *Module) {
+  const IdentifierInfo *Here =
+      S.getASTContext().getCxModuleOwner(New->getLocation());
+  if (!First || !Module || !Here || Here == Module)
+    return;
+  S.Diag(New->getLocation(), diag::err_cx_redeclared_in_other_module)
+      << New << Module << Here;
+  S.Diag(First->getLocation(), diag::note_previous_declaration);
 }
 
 void Sema::AddCxLinkage(VarDecl *VD, const LookupResult &Previous) {
@@ -68,8 +110,10 @@ void Sema::AddCxLinkage(VarDecl *VD, const LookupResult &Previous) {
     return;
 
   bool SawPrevious = false;
+  const VarDecl *First = nullptr;
   const IdentifierInfo *Module =
-      cxModuleOfFirstDecl<VarDecl>(Previous, SawPrevious);
+      cxModuleOfFirstDecl(Context, Previous, VD, SawPrevious, First);
+  diagnoseCxOtherModule(*this, VD, First, Module);
   if (!Module) {
     if (SawPrevious)
       return; // An existing C entity keeps its C identity.
@@ -97,8 +141,10 @@ void Sema::AddCxLinkage(FunctionDecl *FD, const LookupResult &Previous) {
   // unowned file. This runs before redeclaration merging, so the answer comes
   // from the lookup result rather than from a redeclaration chain.
   bool SawPrevious = false;
+  const FunctionDecl *First = nullptr;
   const IdentifierInfo *Module =
-      cxModuleOfFirstDecl<FunctionDecl>(Previous, SawPrevious);
+      cxModuleOfFirstDecl(Context, Previous, FD, SawPrevious, First);
+  diagnoseCxOtherModule(*this, FD, First, Module);
 
   if (!Module) {
     if (SawPrevious)
@@ -139,6 +185,14 @@ static const IdentifierInfo *getCxLabel(const ParmVarDecl *PVD) {
 void Sema::AddCxArgumentLabel(Decl *Param, const IdentifierInfo *Label) {
   if (!Param || !Label)
     return;
+  // `_` spells an unlabeled position, as in the compound name `move(_:mode:)`.
+  if (Label->isStr("_"))
+    return;
+  // `$` separates the parts of a Cx symbol, so a label cannot contain it.
+  if (Label->getName().contains('$')) {
+    Diag(Param->getLocation(), diag::err_cx_label_dollar);
+    return;
+  }
   Param->addAttr(CxArgumentLabelAttr::CreateImplicit(
       Context, const_cast<IdentifierInfo *>(Label)));
 }

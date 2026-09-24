@@ -6212,9 +6212,12 @@ void Parser::ParseCxMethodBody(Decl *MethodDecl, CachedTokens &Toks) {
   Actions.ActOnFinishFunctionBody(MethodDecl, Body.get());
   BodyScope.Exit();
 
-  // A method definition is an ordinary external definition, but it is nested
-  // in a record, so the top-level loop never sees it. Hand it over directly.
-  Actions.getASTConsumer().HandleTopLevelDecl(DeclGroupRef(MethodDecl));
+  // A method definition is nested in a record, so the top-level loop never
+  // sees it. Hand it over the way C++ hands over a member function defined in
+  // its class: the consumer defers it past the enclosing declaration, which
+  // may still give an unnamed record its typedef name for linkage.
+  if (auto *FD = dyn_cast<FunctionDecl>(MethodDecl))
+    Actions.getASTConsumer().HandleInlineFunctionDefinition(FD);
 
   while (Tok.isNot(tok::eof))
     ConsumeAnyToken();

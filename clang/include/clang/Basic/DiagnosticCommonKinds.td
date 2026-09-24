@@ -28,6 +28,8 @@ def warn_stack_exhausted : Warning<
   InGroup<DiagGroup<"stack-exhausted">>, NoSFINAE;
 
 def note_declared_at : Note<"declared here">;
+def err_cx_invalid_module_name : Error<
+  "invalid Cx module name '%0': a module name is an identifier without '$'">;
 def note_previous_definition : Note<"previous definition is here">;
 def note_previous_declaration : Note<"previous declaration is here">;
 def note_previous_implicit_declaration : Note<

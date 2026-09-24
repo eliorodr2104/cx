@@ -2,6 +2,8 @@
 // rule, checked in the emitted code.
 
 // RUN: %clang -x cx -std=gnu23 -S -emit-llvm -o - %s | FileCheck %s
+// RUN: %clang -x cx -std=gnu23 -S -emit-llvm -o - %s \
+// RUN:   | FileCheck --check-prefix=BODIES %s
 // RUN: %clang_cc1 -std=gnu23 -extract-api --pretty-sgf -triple arm64-apple-macosx \
 // RUN:   -x cx-header %s -o - | FileCheck --check-prefix=API %s
 
@@ -15,8 +17,10 @@
 typeof(struct InTypeof { int x; int get() { return self.x; } }) in_typeof;
 unsigned long in_sizeof = sizeof(struct InSizeof { int y; int get() { return y; } });
 int use_typeof(void) { return in_typeof.get(); }
-// CHECK-LABEL: define {{.*}}@"_ZN8InTypeof14_Cx0$Crash$getEP8InTypeof"(
-// CHECK-LABEL: define {{.*}}@"_ZN8InSizeof14_Cx0$Crash$getEP8InSizeof"(
+int use_sizeof(void) { struct InSizeof s = {2}; return s.get(); }
+// A method is emitted where it is used, so these follow their callers.
+// BODIES-DAG: define linkonce_odr {{.*}}@"_ZN8InTypeof14_Cx0$Crash$getEP8InTypeof"(
+// BODIES-DAG: define linkonce_odr {{.*}}@"_ZN8InSizeof14_Cx0$Crash$getEP8InSizeof"(
 
 // A tag declared in a parameter list is mangled at file scope instead of
 // recursing through the function that declares it.
@@ -39,6 +43,7 @@ struct Bag {
   void reset() { total(); }
   int shadowed() { int count = 5; return count; }
 };
+void use_bag(struct Bag *b) { b->size(); b->add(); b->reset(); b->shadowed(); }
 
 // CHECK-LABEL: define {{.*}}@"_ZN3Bag15_Cx0$Crash$sizeEPK3Bag"(
 // CHECK-NOT: $count"

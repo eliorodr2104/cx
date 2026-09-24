@@ -2797,6 +2797,12 @@ def note_cx_compound_name_candidate : Note<
 
 def err_cx_label_through_pointer : Error<
   "argument labels are not available through a function pointer">;
+def err_cx_label_dollar : Error<
+  "an argument label cannot contain '$'">;
+def err_cx_redeclared_in_other_module : Error<
+  "%0 is first declared in module %1, so module %2 cannot declare it">;
+def err_cx_function_needs_prototype : Error<
+  "%0 is declared in a Cx module, so it needs a prototype">;
 def err_cx_label_redeclaration_mismatch : Error<
   "argument labels in redeclaration of %0 do not match the previous "
   "declaration">;
