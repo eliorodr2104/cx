@@ -2102,6 +2102,12 @@ private:
                                 std::optional<unsigned> &Write,
                                 SourceLocation &Loc);
 
+  /// Whether the tokens start a Cx construction that cannot also be read as a
+  /// C declaration or type-id: `Type(label: ...` or `Type(<literal>...`.
+  /// Asked where C would otherwise commit to a declaration or a type name, at
+  /// the start of a statement and after `sizeof(`.
+  bool isCxUnambiguousConstruction();
+
   /// Parse `TypeName(field: value, ...)`, the generated memberwise
   /// construction of a Cx struct. The current token is the type annotation.
   ExprResult ParseCxConstructionExpression();
@@ -5130,7 +5136,7 @@ private:
     if (getLangOpts().CPlusPlus)
       return isCXXTypeId(TentativeCXXTypeIdContext::InParens, isAmbiguous);
     isAmbiguous = false;
-    return isTypeSpecifierQualifier(Tok);
+    return isTypeSpecifierQualifier(Tok) && !isCxUnambiguousConstruction();
   }
   bool isTypeIdInParens() {
     bool isAmbiguous;
@@ -7792,7 +7798,8 @@ public:
   bool isDeclarationStatement(bool DisambiguatingWithExpression = false) {
     if (getLangOpts().CPlusPlus)
       return isCXXDeclarationStatement(DisambiguatingWithExpression);
-    return isDeclarationSpecifier(ImplicitTypenameContext::No, true);
+    return isDeclarationSpecifier(ImplicitTypenameContext::No, true) &&
+           !isCxUnambiguousConstruction();
   }
 
   /// isForInitDeclaration - Disambiguates between a declaration or an

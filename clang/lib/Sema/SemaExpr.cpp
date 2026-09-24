@@ -540,6 +540,13 @@ ExprResult Sema::DefaultFunctionArrayConversion(Expr *E, bool Diagnose) {
     E = ImpCastExprToType(E, Context.getPointerType(Ty),
                           CK_FunctionToPointerDecay).get();
   } else if (Ty->isArrayType()) {
+    // Cx: an array member decaying to a mutable pointer hands out a way to
+    // write every element, so it needs the member's write access, as `&` on
+    // it would. Indexing is checked on the element it reaches instead.
+    if (getLangOpts().CX && !CxDecayingSubscriptBase &&
+        !Context.getBaseElementType(Ty).isConstQualified() &&
+        CheckCxWriteAccessChain(E))
+      return ExprError();
     // In C90 mode, arrays only promote to pointers if the array expression is
     // an lvalue.  The relevant legalese is C90 6.2.2.1p3: "an lvalue that has
     // type 'array of type' is converted to an expression that has type 'pointer
@@ -5431,17 +5438,20 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
     }
   }
 
-  // Perform default conversions.
-  if (!LHSExp->getType()->isSubscriptableVectorType()) {
-    ExprResult Result = DefaultFunctionArrayLvalueConversion(LHSExp);
+  // Perform default conversions. Either operand may be the array.
+  {
+    llvm::SaveAndRestore<bool> SubscriptBase(CxDecayingSubscriptBase, true);
+    if (!LHSExp->getType()->isSubscriptableVectorType()) {
+      ExprResult Result = DefaultFunctionArrayLvalueConversion(LHSExp);
+      if (Result.isInvalid())
+        return ExprError();
+      LHSExp = Result.get();
+    }
+    ExprResult Result = DefaultFunctionArrayLvalueConversion(RHSExp);
     if (Result.isInvalid())
       return ExprError();
-    LHSExp = Result.get();
+    RHSExp = Result.get();
   }
-  ExprResult Result = DefaultFunctionArrayLvalueConversion(RHSExp);
-  if (Result.isInvalid())
-    return ExprError();
-  RHSExp = Result.get();
 
   QualType LHSTy = LHSExp->getType(), RHSTy = RHSExp->getType();
 
@@ -14339,12 +14349,10 @@ static bool CheckForModifiableLvalue(Expr *E, SourceLocation Loc, Sema &S) {
   S.CheckShadowingDeclModification(E, Loc);
 
   // Cx write access covers every modification that reaches here: assignment,
-  // compound assignment and increment alike.
-  if (S.getLangOpts().CX)
-    if (auto *ME = dyn_cast<MemberExpr>(E->IgnoreParenImpCasts()))
-      if (S.CheckCxMemberAccess(ME->getMemberDecl(), ME->getMemberLoc(),
-                                /*ForWrite=*/true))
-        return true;
+  // compound assignment and increment alike, of the member or of any part of
+  // it.
+  if (S.CheckCxWriteAccessChain(E))
+    return true;
 
   SourceLocation OrigLoc = Loc;
   Expr::isModifiableLvalueResult IsLV = E->isModifiableLvalue(S.Context,
@@ -14976,15 +14984,15 @@ bool Sema::CheckUseOfCXXMethodAsAddressOfOperand(SourceLocation OpLoc,
 }
 
 QualType Sema::CheckAddressOfOperand(ExprResult &OrigOp, SourceLocation OpLoc) {
-  // Cx: a mutable pointer to a member is a way to write it, so it needs the
-  // member's write access. Restricting `=` but handing out an unrestricted
-  // pointer to the same field would not enforce the intended API.
-  if (getLangOpts().CX)
-    if (auto *ME = dyn_cast<MemberExpr>(OrigOp.get()->IgnoreParens()))
-      if (!ME->getType().isConstQualified() &&
-          CheckCxMemberAccess(ME->getMemberDecl(), ME->getMemberLoc(),
-                              /*ForWrite=*/true))
-        return QualType();
+  // Cx: a mutable pointer to a member, or to any part of one, is a way to
+  // write it, so it needs the write access. Restricting `=` but handing out an
+  // unrestricted pointer to the same field would not enforce the intended API.
+  // A method call's receiver is checked once the method is known.
+  if (getLangOpts().CX && !CxTakingReceiverAddress &&
+      !OrigOp.get()->getType().isConstQualified() &&
+      !OrigOp.get()->getType()->isPlaceholderType() &&
+      CheckCxWriteAccessChain(OrigOp.get()))
+    return QualType();
 
   if (const BuiltinType *PTy = OrigOp.get()->getType()->getAsPlaceholderType()){
     if (PTy->getKind() == BuiltinType::Overload) {

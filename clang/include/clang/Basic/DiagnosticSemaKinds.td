@@ -2743,6 +2743,10 @@ def err_cx_no_viable_initializer : Error<
   "no initializer of %0 accepts these values">;
 def err_cx_ambiguous_initializer : Error<
   "construction of %0 is ambiguous">;
+def err_cx_init_in_continuation : Error<
+  "an initializer of %0 must be declared in its primary definition">;
+def err_cx_init_in_union : Error<
+  "a union has no construction, so it cannot declare an initializer">;
 def err_cx_init_at_file_scope : Error<
   "construction of %0 runs an initializer, so it cannot appear outside a "
   "function">;
@@ -2777,6 +2781,8 @@ def err_cx_write_through_non_mutating : Error<
   "cannot modify %0 through the receiver of '~mutating' method %1">;
 def note_cx_remove_non_mutating : Note<
   "remove '~mutating' from %0 if it modifies the receiver">;
+def err_cx_method_on_volatile : Error<
+  "cannot call Cx method %0 on a volatile value of type %1">;
 def err_cx_mutating_on_const : Error<
   "cannot call mutating method %0 on a constant value of type %1">;
 def note_cx_mark_non_mutating : Note<

@@ -34,6 +34,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/PointerIntPair.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -615,6 +616,35 @@ public:
 
 ExprResult InitListChecker::PerformEmptyInit(SourceLocation Loc,
                                              const InitializedEntity &Entity) {
+  // Cx: a C record has no constructor, so value-initializing it zero-fills.
+  // One whose fields carry declaration-site defaults, at any depth, is
+  // instead initialized from an empty list, which gives each field its
+  // default exactly as `T x = {};` does.
+  if (!SemaRef.getLangOpts().CPlusPlus &&
+      SemaRef.hasCxFieldDefaults(Entity.getType())) {
+    auto *Empty = new (SemaRef.Context)
+        InitListExpr(SemaRef.Context, Loc, {}, Loc, /*isExplicit=*/false);
+    Empty->setType(Entity.getType().getUnqualifiedType());
+    // A union holds one member: the first that has a default to give.
+    if (const auto *RD = Entity.getType()->getAsRecordDecl();
+        RD && RD->isUnion())
+      for (FieldDecl *FD : RD->fields())
+        if (FD->hasInClassInitializer() ||
+            SemaRef.hasCxFieldDefaults(FD->getType())) {
+          Empty->setInitializedFieldInUnion(FD);
+          break;
+        }
+    bool RequiresSecondPass = false;
+    FillInEmptyInitializations(Entity, Empty, RequiresSecondPass,
+                               /*OuterILE=*/nullptr, /*OuterIndex=*/0);
+    if (RequiresSecondPass && !hadError)
+      FillInEmptyInitializations(Entity, Empty, RequiresSecondPass,
+                                 /*OuterILE=*/nullptr, /*OuterIndex=*/0);
+    if (hadError)
+      return ExprError();
+    return Empty;
+  }
+
   InitializationKind Kind = InitializationKind::CreateValue(Loc, Loc, Loc,
                                                             true);
   MultiExprArg SubInit;
@@ -2378,16 +2408,43 @@ void InitListChecker::CheckStructUnionTypes(
 
   // Cx: initializing a record writes its fields, so it needs the same write
   // access a field assignment needs. Without this an aggregate initializer
-  // would be a way around every access restriction on the type.
-  if (!VerifyOnly && SemaRef.getLangOpts().CX &&
-      !SemaRef.CxBuildingConstruction) {
+  // would be a way around every access restriction on the type. A field with
+  // a declaration-site default is only written when the list names it, which
+  // is checked once the list has been matched against the fields, below.
+  bool CheckCxAccess = !VerifyOnly && SemaRef.getLangOpts().CX &&
+                       !SemaRef.CxBuildingConstruction;
+  if (CheckCxAccess) {
     for (const FieldDecl *FD : RD->fields())
-      if (SemaRef.CheckCxMemberAccess(FD, IList->getBeginLoc(),
+      if (!FD->hasInClassInitializer() &&
+          SemaRef.CheckCxMemberAccess(FD, IList->getBeginLoc(),
                                       /*ForWrite=*/true)) {
         hadError = true;
         return;
       }
   }
+  llvm::scope_exit CheckCxDefaultedFields([&] {
+    if (!CheckCxAccess || hadError || !StructuredList)
+      return;
+    auto Check = [&](const FieldDecl *FD, unsigned I) {
+      if (!FD || !FD->hasInClassInitializer() ||
+          I >= StructuredList->getNumInits())
+        return;
+      const Expr *Written = StructuredList->getInit(I);
+      if (Written && Written != FD->getInClassInitializer() &&
+          SemaRef.CheckCxMemberAccess(FD, Written->getBeginLoc(),
+                                      /*ForWrite=*/true))
+        hadError = true;
+    };
+    if (RD->isUnion()) {
+      Check(StructuredList->getInitializedFieldInUnion(), 0);
+      return;
+    }
+    // The structured list has no slot for an unnamed bit-field.
+    unsigned I = 0;
+    for (const FieldDecl *FD : RD->fields())
+      if (!FD->isUnnamedBitField())
+        Check(FD, I++);
+  });
 
   // If the record is invalid, some of it's members are invalid. To avoid
   // confusion, we forgo checking the initializer for the entire record.
@@ -2625,8 +2682,17 @@ void InitListChecker::CheckStructUnionTypes(
 
     InitializedEntity MemberEntity =
       InitializedEntity::InitializeMember(*Field, &Entity);
-    CheckSubElementType(MemberEntity, IList, Field->getType(), Index,
-                        StructuredList, StructuredIndex);
+    // Cx: a construction passes a field's declaration-site default through as
+    // it is. It was converted, and diagnosed, once where it is written.
+    if (!SemaRef.getLangOpts().CPlusPlus &&
+        IList->getInit(Index) == Field->getInClassInitializer()) {
+      UpdateStructuredListElement(StructuredList, StructuredIndex,
+                                  IList->getInit(Index));
+      ++Index;
+    } else {
+      CheckSubElementType(MemberEntity, IList, Field->getType(), Index,
+                          StructuredList, StructuredIndex);
+    }
     InitializedSomething = true;
     InitializedFields.insert(*Field);
     if (RD->isUnion() && isInitializedStructuredList(StructuredList)) {

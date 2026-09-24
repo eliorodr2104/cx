@@ -4296,6 +4296,27 @@ public:
   /// writes -- a field taking its declared default is not one of them.
   bool CxBuildingConstruction = false;
 
+  /// Set while a Cx method call takes its receiver's address. Whether that is
+  /// a write depends on the method the call selects, which is only known
+  /// afterwards, so \c BuildCxMethodCall checks it then.
+  bool CxTakingReceiverAddress = false;
+
+  /// Set while the base of a subscript decays. Indexing an array reaches one
+  /// element, which the subscript's own read or write is checked against; it
+  /// does not hand out a pointer to the whole array.
+  bool CxDecayingSubscriptBase = false;
+
+  /// Report a write to a member \p E reaches that the current context lacks
+  /// write access to, anywhere along the chain of subobjects: `a.b.c`,
+  /// `a.arr[i]`, an anonymous member. `->` and `*` reach another object and
+  /// end the chain. Returns true when it diagnosed.
+  bool CheckCxWriteAccessChain(const Expr *E);
+
+  /// Whether a value of type \p T, or of its array element type, contains a
+  /// Cx field default at any depth. Such a value is initialized from an empty
+  /// list rather than zero-filled wherever C would value-initialize it.
+  bool hasCxFieldDefaults(QualType T);
+
   /// Record \p Init as the declaration-site default of the field \p Field.
   void AddCxFieldDefault(Decl *Field, SourceLocation EqualLoc,
                          ExprResult Init);

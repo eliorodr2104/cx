@@ -452,6 +452,7 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
     return nullptr;
   }
 
+  bool InvalidInit = false;
   if (NameInfo.getName().getAsIdentifierInfo()->isStr("init")) {
     // The parser gives an initializer a `void` return type, so a written one
     // is the only way this fails.
@@ -463,6 +464,10 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
     if (NonMutating) {
       Diag(D.getBeginLoc(), diag::err_cx_init_mutating);
       NonMutating = false;
+    }
+    if (RD->isUnion()) {
+      Diag(D.getBeginLoc(), diag::err_cx_init_in_union);
+      InvalidInit = true;
     }
   }
 
@@ -532,6 +537,8 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
   // default; M4b makes that explicit and adds the other levels.
   FD->setAccess(AS_public);
   FD->addAttr(CxMethodAttr::CreateImplicit(Context));
+  if (InvalidInit)
+    FD->setInvalidDecl();
 
   // A method cannot be a C entity, so it always carries a Cx name. The module
   // may be absent when the file has no owner; the record name still keeps the
@@ -569,6 +576,14 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
       FD->setAccess(Prev->getAccess());
     }
   } else {
+    // Whether a type has initializers decides how every construction of it
+    // is built, so a continuation, which another translation unit may never
+    // see, cannot introduce one. It can implement a declared one.
+    if (isCxInit(FD) && RD->isCompleteDefinition()) {
+      Diag(FD->getLocation(), diag::err_cx_init_in_continuation) << RD;
+      Diag(RD->getLocation(), diag::note_cx_primary_definition) << RD;
+      FD->setInvalidDecl();
+    }
     DiagnoseCxNearMiss(RD, FD);
   }
 
@@ -682,6 +697,7 @@ ExprResult Sema::BuildCxMethodCall(Expr *Callee, SourceLocation LParenLoc,
   if (ME->isArrow()) {
     SelfArg = Base;
   } else {
+    llvm::SaveAndRestore<bool> TakingAddress(CxTakingReceiverAddress, true);
     SelfArg = CreateBuiltinUnaryOp(ME->getOperatorLoc(), UO_AddrOf, Base);
     if (SelfArg.isInvalid())
       return ExprError();
@@ -747,6 +763,19 @@ ExprResult Sema::BuildCxMethodCall(Expr *Callee, SourceLocation LParenLoc,
     Diag(Method->getLocation(), diag::note_cx_mark_non_mutating);
     return ExprError();
   }
+  // No method takes a volatile receiver, so a volatile value has none to
+  // call; C would only warn and drop the qualifier.
+  if (!GivenPointee.isNull() && GivenPointee.isVolatileQualified()) {
+    Diag(ME->getMemberLoc(), diag::err_cx_method_on_volatile)
+        << Method << GivenPointee;
+    return ExprError();
+  }
+  // A mutating method writes the receiver, so a receiver reached through
+  // members needs the write access of every one of them. A `~mutating` one
+  // only reads it.
+  if (!ME->isArrow() && !Pointee.isConstQualified() &&
+      CheckCxWriteAccessChain(Base))
+    return ExprError();
 
   ExprResult Fn = BuildDeclRefExpr(
       Method, Method->getType(),
@@ -963,6 +992,65 @@ bool Sema::CheckCxMemberAccess(const NamedDecl *Member, SourceLocation Loc,
   return true;
 }
 
+bool Sema::CheckCxWriteAccessChain(const Expr *E) {
+  if (!getLangOpts().CX || !E)
+    return false;
+  E = E->IgnoreParenImpCasts();
+  // The member as written, which names an anonymous member it goes through.
+  const NamedDecl *Written = nullptr;
+  SourceLocation WrittenLoc;
+  while (true) {
+    if (const auto *ME = dyn_cast<MemberExpr>(E)) {
+      // A method reference is rejected as a value elsewhere.
+      const auto *Field = dyn_cast<FieldDecl>(ME->getMemberDecl());
+      if (Field && !Written) {
+        Written = Field;
+        WrittenLoc = ME->getMemberLoc();
+      }
+      if (Field && Field->isAnonymousStructOrUnion()) {
+        if (std::optional<unsigned> Level = cxMemberAccessLevelViolated(
+                Field, WrittenLoc, /*ForWrite=*/true)) {
+          Diag(WrittenLoc, diag::err_cx_member_inaccessible)
+              << Written << *Level << /*ForWrite=*/true;
+          Diag(Field->getLocation(), diag::note_cx_member_declared_here)
+              << *Level << Written;
+          return true;
+        }
+      } else if (Field && CheckCxMemberAccess(Field, ME->getMemberLoc(),
+                                              /*ForWrite=*/true)) {
+        return true;
+      }
+      if (ME->isArrow())
+        return false;
+      E = ME->getBase()->IgnoreParens();
+      continue;
+    }
+    if (const auto *ASE = dyn_cast<ArraySubscriptExpr>(E)) {
+      // An element of an array member is part of that member; an element
+      // reached through a pointer is part of another object.
+      const auto *Decay =
+          dyn_cast<ImplicitCastExpr>(ASE->getBase()->IgnoreParens());
+      if (!Decay || Decay->getCastKind() != CK_ArrayToPointerDecay)
+        return false;
+      E = Decay->getSubExpr()->IgnoreParens();
+      continue;
+    }
+    return false;
+  }
+}
+
+bool Sema::hasCxFieldDefaults(QualType T) {
+  if (!getLangOpts().CX || T.isNull())
+    return false;
+  const auto *RD = Context.getBaseElementType(T)->getAsRecordDecl();
+  if (!RD || !(RD = RD->getDefinition()))
+    return false;
+  // A C record cannot contain itself by value, so this terminates.
+  return llvm::any_of(RD->fields(), [&](const FieldDecl *FD) {
+    return FD->hasInClassInitializer() || hasCxFieldDefaults(FD->getType());
+  });
+}
+
 //===----------------------------------------------------------------------===//
 // Generated memberwise construction
 //===----------------------------------------------------------------------===//
@@ -1067,8 +1155,18 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
 
   SmallVector<Expr *, 8> Defaults;
   for (FieldDecl *FD : RD->fields()) {
+    if (FD->getType()->isIncompleteArrayType() || FD->isUnnamedBitField())
+      continue;
     if (Expr *Default = FD->getInClassInitializer())
       Defaults.push_back(Default);
+    else if (hasCxFieldDefaults(FD->getType())) {
+      // A member with defaults of its own starts out holding them. The list
+      // is typed by the initialization, as the parser's lists are.
+      auto *Empty = new (Context)
+          InitListExpr(Context, TypeLoc, {}, TypeLoc, /*isExplicit=*/false);
+      Empty->setType(Context.VoidTy);
+      Defaults.push_back(Empty);
+    }
     else
       // Until definite initialization exists, a field the initializer does
       // not write reads as zero rather than as garbage.
@@ -1199,6 +1297,10 @@ ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
   // declaration order. Its labels are the field names.
   SmallVector<FieldDecl *, 8> Fields;
   for (FieldDecl *FD : RD->fields()) {
+    // A flexible array member has no storage in a value, and an unnamed
+    // bit-field is padding: neither is something construction can write.
+    if (FD->getType()->isIncompleteArrayType() || FD->isUnnamedBitField())
+      continue;
     if (!FD->getIdentifier()) {
       Diag(TypeLoc, diag::err_cx_construction_unnamed_field) << T;
       return ExprError();

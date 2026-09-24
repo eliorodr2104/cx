@@ -5065,6 +5065,17 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
       ParsingDeclSpec DS(*this);
       ParseStructDeclaration(DS, CFieldCallback, &LateFieldAttrs);
 
+      // Cx: an anonymous struct or union member has no declarator, so the
+      // callback never saw it; its access applies to the field just added.
+      if (getLangOpts().CX && !NumDeclarators && (AccessRead || AccessWrite)) {
+        FieldDecl *Last = nullptr;
+        for (FieldDecl *FD : cast<RecordDecl>(TagDecl)->fields())
+          Last = FD;
+        if (Last && Last->isAnonymousStructOrUnion())
+          Actions.AddCxAccess(Last, AccessRead, AccessWrite,
+                              /*InContinuation=*/false, AccessLoc);
+      }
+
       // A method may be defined where it is declared. The record is not
       // complete yet, so cache the body and replay it below.
       if (CxMethod && Tok.is(tok::l_brace)) {
@@ -5915,6 +5926,28 @@ bool Parser::isCxInferenceSpecifier(const Token &Tok) {
   if (!II->isStr("var") && !II->isStr("let"))
     return false;
   return Actions.isCxContextualKeyword(II, getCurScope());
+}
+
+bool Parser::isCxUnambiguousConstruction() {
+  if (!getLangOpts().CX || NextToken().isNot(tok::l_paren))
+    return false;
+  if (Tok.is(tok::annot_typename)) {
+    TypeResult Annot = getTypeAnnotation(Tok);
+    if (Annot.isInvalid() ||
+        !Actions.GetTypeFromParser(Annot.get())->getAs<RecordType>())
+      return false;
+  } else if (!Tok.is(tok::identifier) ||
+             !Actions.getCxConstructionType(Tok.getIdentifierInfo(),
+                                            Tok.getLocation(), getCurScope())) {
+    return false;
+  }
+  // `Type(x)` is also a C declaration of `x`, and `Type()` a function type,
+  // so only what no declarator can start with is taken as construction: a
+  // labelled value, or a literal.
+  const Token &First = GetLookAheadToken(2);
+  if (First.is(tok::identifier))
+    return GetLookAheadToken(3).is(tok::colon);
+  return tok::isLiteral(First.getKind());
 }
 
 ExprResult Parser::ParseCxConstructionExpression() {

@@ -1069,6 +1069,18 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   }
 
   if (IndirectFieldDecl *FD = dyn_cast<IndirectFieldDecl>(MemberDecl)) {
+    // Cx: a member of an anonymous struct or union is reached through it, so
+    // reading it needs the read access of every field along the way. The
+    // message names the member written, since the anonymous one has no name.
+    for (NamedDecl *Link : FD->chain())
+      if (std::optional<unsigned> Level = cxMemberAccessLevelViolated(
+              Link, MemberLoc, /*ForWrite=*/false)) {
+        Diag(MemberLoc, diag::err_cx_member_inaccessible)
+            << FD << *Level << /*ForWrite=*/false;
+        Diag(Link->getLocation(), diag::note_cx_member_declared_here)
+            << *Level << FD;
+        return ExprError();
+      }
     if (ConvertBaseExprToGLValue())
       return ExprError();
     // We may have found a field within an anonymous union or struct
