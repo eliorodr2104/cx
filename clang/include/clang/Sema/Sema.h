@@ -4342,6 +4342,15 @@ public:
   ExprResult BuildCxMethodCall(Expr *Callee, SourceLocation LParenLoc,
                                MultiExprArg Args, SourceLocation RParenLoc);
 
+  /// The record of the Cx method body being parsed, with \p Self set to its
+  /// receiver parameter. Null outside a Cx method.
+  RecordDecl *getCxReceiverRecord(ParmVarDecl **Self = nullptr);
+
+  /// Whether an unqualified name names a member of the receiver of the Cx
+  /// method being parsed. Asked before C turns `name(` into an implicit
+  /// function declaration.
+  bool isCxImplicitSelfMember(const DeclarationNameInfo &NameInfo);
+
   /// Inside a Cx method body, resolve an unqualified name against the
   /// receiver. Returns an unusable, valid result when the name is not a
   /// member, so the caller keeps its ordinary diagnostics.

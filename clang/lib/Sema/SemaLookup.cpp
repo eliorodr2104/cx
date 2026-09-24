@@ -4182,8 +4182,18 @@ private:
         }
 
       // Walk all lookup results in the TU for each identifier.
-      for (const auto &Ident : Idents) {
-        for (auto I = S.IdResolver.begin(Ident.getValue()),
+      //
+      // The body of this loop can add identifiers to the table: deserializing
+      // a declaration from an external source does, and code completion
+      // reaches here with a preamble loaded. Adding to the table invalidates
+      // an iterator over it, so take the identifiers first and walk those.
+      llvm::SmallVector<IdentifierInfo *, 128> Visible;
+      Visible.reserve(Idents.size());
+      for (const auto &Ident : Idents)
+        Visible.push_back(Ident.getValue());
+
+      for (IdentifierInfo *Ident : Visible) {
+        for (auto I = S.IdResolver.begin(Ident),
                   E = S.IdResolver.end();
              I != E; ++I) {
           if (S.IdResolver.isDeclInScope(*I, Ctx)) {

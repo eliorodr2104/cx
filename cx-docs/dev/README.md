@@ -13,9 +13,14 @@ Fish shell helpers for working on the Cx fork. Neither is part of the compiler.
 Build the compiler, then install the function once:
 
 ```fish
-ninja -C build clang
+ninja -C build clang LTO
 ln -s (pwd)/cx-docs/dev/clangx.fish ~/.config/fish/functions/clangx.fish
 ```
+
+`LTO` is in that list because the driver passes `-lto_library` to the linker on
+Darwin. Without it every link prints `ld: warning: ignoring -lto_library ...
+file does not exist`. The warning is harmless -- the link succeeds -- but it is
+noise on every build.
 
 `clangx` then works from any directory and resolves the checkout through the
 symlink, so nothing is hard-coded. On macOS it also passes the active SDK as
@@ -41,7 +46,7 @@ The regression tree under `clang/test/Cx` is run by `lit`, which uses
 argument label becomes an error in the editor. `hxcx` fixes that:
 
 ```fish
-ninja -C build clang clangd
+ninja -C build clang clangd LTO
 ln -s (pwd)/cx-docs/dev/hxcx.fish ~/.config/fish/functions/hxcx.fish
 ```
 

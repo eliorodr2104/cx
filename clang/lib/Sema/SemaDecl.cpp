@@ -968,6 +968,12 @@ Corrected:
     // If an unqualified-id is followed by a '(', then we have a function
     // call.
     if (SS.isEmpty() && NextToken.is(tok::l_paren)) {
+      // Cx: inside a method body this may be another method of the receiver,
+      // which is not an undeclared C function. Leave it to the expression
+      // path, which resolves the receiver.
+      if (getLangOpts().CX && isCxImplicitSelfMember(NameInfo))
+        return NameClassification::Unknown();
+
       // In C++, this is an ADL-only call.
       // FIXME: Reference?
       if (getLangOpts().CPlusPlus)

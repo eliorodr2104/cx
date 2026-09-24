@@ -713,31 +713,54 @@ ExprResult Sema::BuildCxMethodCall(Expr *Callee, SourceLocation LParenLoc,
   return BuildResolvedCallExpr(Fn.get(), Method, LParenLoc, AllArgs, RParenLoc);
 }
 
+/// The receiver's record inside a Cx method body, with \p Self set to the
+/// receiver parameter. Null outside one.
+RecordDecl *Sema::getCxReceiverRecord(ParmVarDecl **Self) {
+  FunctionDecl *Method = getCurrentCxMethod();
+  if (!Method || Method->getNumParams() == 0)
+    return nullptr;
+  ParmVarDecl *P = Method->getParamDecl(0);
+  const auto *PT = P->getType()->getAs<PointerType>();
+  if (!PT)
+    return nullptr;
+  const auto *RT = PT->getPointeeType()->getAs<RecordType>();
+  if (!RT)
+    return nullptr;
+  if (Self)
+    *Self = P;
+  return RT->getDecl();
+}
+
+bool Sema::isCxImplicitSelfMember(const DeclarationNameInfo &NameInfo) {
+  if (!getLangOpts().CX)
+    return false;
+  RecordDecl *RD = getCxReceiverRecord();
+  if (!RD)
+    return false;
+  if (LookupCxMethod(RD, NameInfo.getName()))
+    return true;
+  LookupResult Fields(*this, NameInfo, LookupMemberName);
+  Fields.suppressDiagnostics();
+  LookupQualifiedName(Fields, RD);
+  return !Fields.empty();
+}
+
 ExprResult
 Sema::BuildCxImplicitSelfMemberRef(const DeclarationNameInfo &NameInfo,
                                    Scope *S) {
-  FunctionDecl *Method = getCurrentCxMethod();
-  if (!Method || Method->getNumParams() == 0)
+  ParmVarDecl *Self = nullptr;
+  RecordDecl *RD = getCxReceiverRecord(&Self);
+  if (!RD)
     return ExprEmpty();
 
-  ParmVarDecl *Self = Method->getParamDecl(0);
-  const auto *PT = Self->getType()->getAs<PointerType>();
-  if (!PT)
-    return ExprEmpty();
-  const auto *RT = PT->getPointeeType()->getAs<RecordType>();
-  if (!RT)
-    return ExprEmpty();
-  RecordDecl *RD = RT->getDecl();
-
-  bool IsMember = LookupCxMethod(RD, NameInfo.getName()) != nullptr;
-  if (!IsMember) {
+  FunctionDecl *Sibling = LookupCxMethod(RD, NameInfo.getName());
+  if (!Sibling) {
     LookupResult Fields(*this, NameInfo, LookupMemberName);
     Fields.suppressDiagnostics();
     LookupQualifiedName(Fields, RD);
-    IsMember = !Fields.empty();
+    if (Fields.empty())
+      return ExprEmpty();
   }
-  if (!IsMember)
-    return ExprEmpty();
 
   ExprResult Base = BuildDeclRefExpr(
       Self, Self->getType(), VK_LValue,
@@ -745,6 +768,17 @@ Sema::BuildCxImplicitSelfMemberRef(const DeclarationNameInfo &NameInfo,
       NestedNameSpecifierLoc());
   if (Base.isInvalid())
     return ExprError();
+
+  // A method is an associated function, so ordinary member lookup does not
+  // reach it and the reference has to be built here -- the same way
+  // `self.method` builds it.
+  if (Sibling)
+    return MemberExpr::Create(
+        Context, Base.get(), /*IsArrow=*/true, NameInfo.getLoc(),
+        NestedNameSpecifierLoc(), SourceLocation(), Sibling,
+        DeclAccessPair::make(Sibling, Sibling->getAccess()), NameInfo,
+        /*TemplateArgs=*/nullptr, Sibling->getType(), VK_LValue, OK_Ordinary,
+        NOUR_None);
 
   CXXScopeSpec SS;
   return BuildMemberReferenceExpr(Base.get(), Self->getType(),

@@ -5985,20 +5985,24 @@ bool Parser::ParseCxAccessSpecifiers(std::optional<unsigned> &Read,
     if (!Level)
       break;
 
-    // `private` alone is a level; `private(set)` restricts writing only. An
-    // identifier in this position is not valid C either way.
+    // The spelling is contextual: any visible declaration of this name wins,
+    // which is also what keeps a type named `private` meaning the type.
+    if (!Actions.isCxContextualKeyword(II, getCurScope()))
+      break;
+
+    // `private` alone is a level; `private(set)` restricts writing only.
     bool IsSetter = NextToken().is(tok::l_paren) &&
                     GetLookAheadToken(2).is(tok::identifier) &&
                     GetLookAheadToken(2).getIdentifierInfo()->isStr("set") &&
                     GetLookAheadToken(3).is(tok::r_paren);
-    if (!IsSetter && !NextToken().isOneOf(tok::identifier, tok::kw_int,
-                                          tok::kw_char, tok::kw_short,
-                                          tok::kw_long, tok::kw_float,
-                                          tok::kw_double, tok::kw_unsigned,
-                                          tok::kw_signed, tok::kw_void,
-                                          tok::kw_struct, tok::kw_union,
-                                          tok::kw_enum, tok::kw_const,
-                                          tok::kw__Bool, tok::tilde))
+
+    // An access specifier introduces a member; it is never the member. Listing
+    // what may follow instead would have to enumerate every declaration
+    // specifier C has, and missing one -- `volatile`, `_Atomic` -- silently
+    // rejected a valid member.
+    if (!IsSetter && NextToken().isOneOf(tok::semi, tok::comma, tok::r_brace,
+                                         tok::equal, tok::l_square,
+                                         tok::colon, tok::eof))
       break;
 
     if (!Any)

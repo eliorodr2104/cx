@@ -1,5 +1,9 @@
-# Launch Helix with this checkout's Cx-aware clangd, so `.c` files are read as
-# Cx instead of drowning in errors about `#module`, `var`, `let` and labels.
+# Launch Helix with this checkout's Cx-aware clangd, so `.c` and `.h` files are
+# read as Cx instead of drowning in errors about `#module`, `var`, `let` and
+# labels.
+#
+# The `-x cx` in .clangd matters most for headers: left to itself clangd reads
+# a `.h` as an Objective-C++ header, where every Cx construct is an error.
 #
 # Install once, then `hxcx` works from any directory:
 #
@@ -30,9 +34,18 @@ function hxcx --description "Helix with the Cx language server from this checkou
         set target (path dirname (path resolve $target))
     end
 
-    if not __hxcx_has_config $target
+    set -l config (__hxcx_find_config $target)
+    if test -z "$config"
         printf 'CompileFlags:\n  Add: [-x, cx]\n' > $target/.clangd
-        echo "hxcx: wrote $target/.clangd so clangd reads .c files as Cx"
+        echo "hxcx: wrote $target/.clangd so clangd reads this tree as Cx"
+    else if not grep -q -- '-x.*\bcx\b' $config
+        # Never edit a .clangd that is the user's; say what is missing instead.
+        # Without `-x cx`, clangd reads a .c file as C and a .h file as an
+        # Objective-C++ header, and every Cx construct becomes an error.
+        echo "hxcx: $config does not add '-x cx'; Cx files will not parse" >&2
+        echo "      add this to it:" >&2
+        echo "        CompileFlags:" >&2
+        echo "          Add: [-x, cx]" >&2
     end
 
     # Exported so Helix and the language server it spawns both see it.
@@ -47,14 +60,18 @@ function hxcx --description "Helix with the Cx language server from this checkou
     end
 end
 
-# Whether $argv[1] or any directory above it already provides a .clangd.
-function __hxcx_has_config
+# The .clangd covering $argv[1], searching it and every directory above, or
+# nothing when there is none.
+function __hxcx_find_config
     set -l dir $argv[1]
     while test -n "$dir"; and test "$dir" != /
         if test -f $dir/.clangd
+            echo $dir/.clangd
             return 0
         end
         set dir (path dirname $dir)
     end
-    test -f /.clangd
+    if test -f /.clangd
+        echo /.clangd
+    end
 end
