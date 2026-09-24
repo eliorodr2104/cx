@@ -891,7 +891,8 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
     // call. A type name in expression position is not valid C.
     if (getLangOpts().CX && NextToken().is(tok::l_paren) &&
         Actions.getCxConstructionType(Tok.getIdentifierInfo(),
-                                      Tok.getLocation(), getCurScope()))
+                                      Tok.getLocation(), getCurScope(),
+                                      isCxImplicitTagConstruction()))
       // A constructed value is an ordinary expression, so `Size(...).width`
       // and `Rect(2).area()` continue from here.
       return ParsePostfixExpressionSuffix(ParseCxConstructionExpression());

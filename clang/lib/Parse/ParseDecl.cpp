@@ -2923,16 +2923,24 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
       IdentifierInfo *TokenName = Tok.getIdentifierInfo();
       LookupResult R(Actions, TokenName, SourceLocation(),
                      Sema::LookupOrdinaryName);
+      bool Hidden = Actions.LookupName(R, getCurScope());
 
-      Diag(Loc, diag::err_use_of_tag_name_without_tag)
-        << TokenName << TagName << getLangOpts().CPlusPlus
-        << FixItHint::CreateInsertion(Tok.getLocation(), FixitTagName);
-
-      if (Actions.LookupName(R, getCurScope())) {
-        for (LookupResult::iterator I = R.begin(), IEnd = R.end();
-             I != IEnd; ++I)
-          Diag((*I)->getLocation(), diag::note_decl_hiding_tag_type)
-            << TokenName << TagName;
+      // Cx: a tag name is a type name where nothing ordinary has the name and
+      // the declaration cannot be read as C -- the name is followed by a
+      // declarator, not ended by one. Implicit int was ruled out above.
+      bool CxImplicitTag =
+          getLangOpts().CX && !Hidden &&
+          NextToken().isOneOf(tok::identifier, tok::star, tok::kw_const,
+                              tok::kw_volatile, tok::kw_restrict);
+      if (!CxImplicitTag) {
+        Diag(Loc, diag::err_use_of_tag_name_without_tag)
+            << TokenName << TagName << getLangOpts().CPlusPlus
+            << FixItHint::CreateInsertion(Tok.getLocation(), FixitTagName);
+        if (Hidden)
+          for (LookupResult::iterator I = R.begin(), IEnd = R.end();
+               I != IEnd; ++I)
+            Diag((*I)->getLocation(), diag::note_decl_hiding_tag_type)
+                << TokenName << TagName;
       }
 
       // Parse this as a tag as if the missing tag were present.
@@ -5928,6 +5936,34 @@ bool Parser::isCxInferenceSpecifier(const Token &Tok) {
   return Actions.isCxContextualKeyword(II, getCurScope());
 }
 
+bool Parser::isCxImplicitTagConstruction() {
+  // Until C23, `Tag(...)` with an undeclared `Tag` is a call that implicitly
+  // declares a function, so only a labelled first value, which no call has,
+  // makes it a construction. From C23 there is no implicit declaration.
+  return !getLangOpts().implicitFunctionsAllowed() ||
+         (GetLookAheadToken(2).is(tok::identifier) &&
+          GetLookAheadToken(3).is(tok::colon));
+}
+
+bool Parser::TryAnnotateCxImplicitTagInParens() {
+  // Inside expression parentheses, a tag name followed by what can follow a
+  // type name there -- `(T)x`, `(T *)p`, `(T[2])`, `sizeof(T)` -- has no C
+  // reading: C would take it as an undeclared identifier. `(T(...))` could
+  // be an implicit call, so it is left alone.
+  if (!getLangOpts().CX || Tok.isNot(tok::identifier) ||
+      !NextToken().isOneOf(tok::r_paren, tok::star, tok::l_square))
+    return false;
+  ParsedType Ty = Actions.getCxImplicitTagType(*Tok.getIdentifierInfo(),
+                                               Tok.getLocation(), getCurScope());
+  if (!Ty)
+    return false;
+  Tok.setKind(tok::annot_typename);
+  setTypeAnnotation(Tok, Ty);
+  Tok.setAnnotationEndLoc(Tok.getLocation());
+  PP.AnnotateCachedTokens(Tok);
+  return true;
+}
+
 bool Parser::isCxUnambiguousConstruction() {
   if (!getLangOpts().CX || NextToken().isNot(tok::l_paren))
     return false;
@@ -5938,7 +5974,8 @@ bool Parser::isCxUnambiguousConstruction() {
       return false;
   } else if (!Tok.is(tok::identifier) ||
              !Actions.getCxConstructionType(Tok.getIdentifierInfo(),
-                                            Tok.getLocation(), getCurScope())) {
+                                            Tok.getLocation(), getCurScope(),
+                                            isCxImplicitTagConstruction())) {
     return false;
   }
   // `Type(x)` is also a C declaration of `x`, and `Type()` a function type,
@@ -5961,7 +5998,8 @@ ExprResult Parser::ParseCxConstructionExpression() {
     ConsumeAnnotationToken();
   } else {
     Ty = Actions.getCxConstructionType(Tok.getIdentifierInfo(), TypeLoc,
-                                       getCurScope());
+                                       getCurScope(),
+                                       /*AllowImplicitTag=*/true);
     ConsumeToken();
   }
 

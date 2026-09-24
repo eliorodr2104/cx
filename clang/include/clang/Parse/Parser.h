@@ -2102,6 +2102,14 @@ private:
                                 std::optional<unsigned> &Write,
                                 SourceLocation &Loc);
 
+  /// Whether a bare tag name followed by `(` may be a Cx construction rather
+  /// than C's implicit function declaration.
+  bool isCxImplicitTagConstruction();
+
+  /// In expression parentheses, annotate a bare tag name as the type it names
+  /// when C could not read it (see Sema::getCxImplicitTagType).
+  bool TryAnnotateCxImplicitTagInParens();
+
   /// Whether the tokens start a Cx construction that cannot also be read as a
   /// C declaration or type-id: `Type(label: ...` or `Type(<literal>...`.
   /// Asked where C would otherwise commit to a declaration or a type name, at
@@ -5136,7 +5144,8 @@ private:
     if (getLangOpts().CPlusPlus)
       return isCXXTypeId(TentativeCXXTypeIdContext::InParens, isAmbiguous);
     isAmbiguous = false;
-    return isTypeSpecifierQualifier(Tok) && !isCxUnambiguousConstruction();
+    return (isTypeSpecifierQualifier(Tok) || TryAnnotateCxImplicitTagInParens()) &&
+           !isCxUnambiguousConstruction();
   }
   bool isTypeIdInParens() {
     bool isAmbiguous;

@@ -4322,9 +4322,20 @@ public:
                          ExprResult Init);
 
   /// The record type \p II names here, or null when it names something else.
-  /// Used to tell `Size(...)` construction from an ordinary call.
+  /// Used to tell `Size(...)` construction from an ordinary call. With
+  /// \p AllowImplicitTag, a bare tag name counts too (see
+  /// getCxImplicitTagType); the caller decides that C could not read the
+  /// call any other way.
   ParsedType getCxConstructionType(const IdentifierInfo *II,
-                                   SourceLocation Loc, Scope *S);
+                                   SourceLocation Loc, Scope *S,
+                                   bool AllowImplicitTag);
+
+  /// Cx: the type \p II names as a bare tag name -- `Size` for `struct Size`
+  /// -- or null. Only where nothing in the ordinary namespace has the name:
+  /// any variable, function, enumerator or typedef of that name wins, at any
+  /// scope. The caller decides that the position is one C could not read.
+  ParsedType getCxImplicitTagType(const IdentifierInfo &II,
+                                  SourceLocation Loc, Scope *S);
 
   /// Whether \p FD is a Cx initializer, the `init` of its record.
   bool isCxInitializer(const FunctionDecl *FD) const;

@@ -101,9 +101,9 @@ failed, 0 unexpected failures.
 - **No custom `init`**, so "declaring any custom initializer suppresses
   synthesis" cannot be exercised. When `init` arrives, the suppression rule
   has to be added with it.
-- **Only a typedef'd or annotated type name.** The bare tag-name convenience
-  (`Size` for `struct Size` without a typedef) is
-  [G01](../../OPEN-ISSUES.md#g01--c-grammar-collisions).
+- ~~**Only a typedef'd or annotated type name.**~~ Closed by
+  [M5a](M5a.md): a bare tag name constructs with a labelled first value, and
+  from C23 in any form.
 - **Nested and array fields are constructed only from an expression**, not
   from a nested generated call, because there is no contextual type for an
   inner `(...)` yet.

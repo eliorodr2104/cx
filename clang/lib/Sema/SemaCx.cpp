@@ -20,6 +20,7 @@
 #include "llvm/Support/SaveAndRestore.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
+#include "TypeLocBuilder.h"
 
 using namespace clang;
 
@@ -1165,11 +1166,43 @@ void Sema::AddCxFieldDefault(Decl *Field, SourceLocation EqualLoc,
   FD->setInClassInitializer(Converted.get());
 }
 
+ParsedType Sema::getCxImplicitTagType(const IdentifierInfo &II,
+                                      SourceLocation Loc, Scope *S) {
+  if (!getLangOpts().CX)
+    return nullptr;
+  // The tag first: it is the rare case, and looking it up has no effect on
+  // the translation unit.
+  LookupResult Tags(*this, &II, Loc, LookupTagName);
+  Tags.suppressDiagnostics();
+  LookupName(Tags, S);
+  auto *Tag = Tags.getAsSingle<TagDecl>();
+  if (!Tag)
+    return nullptr;
+  // Anything ordinary with this name wins, including a library builtin that a
+  // C call would implicitly declare. Only now may the lookup declare one.
+  LookupResult Ordinary(*this, &II, Loc, LookupOrdinaryName);
+  Ordinary.suppressDiagnostics();
+  LookupName(Ordinary, S, /*AllowBuiltinCreation=*/true);
+  if (!Ordinary.empty())
+    return nullptr;
+  QualType T = Context.getTypeDeclType(ElaboratedTypeKeyword::None,
+                                       /*Qualifier=*/std::nullopt, Tag);
+  TypeLocBuilder TLB;
+  auto TL = TLB.push<TagTypeLoc>(T);
+  TL.setElaboratedKeywordLoc(SourceLocation());
+  TL.setQualifierLoc(NestedNameSpecifierLoc());
+  TL.setNameLoc(Loc);
+  return CreateParsedType(T, TLB.getTypeSourceInfo(Context, T));
+}
+
 ParsedType Sema::getCxConstructionType(const IdentifierInfo *II,
-                                       SourceLocation Loc, Scope *S) {
+                                       SourceLocation Loc, Scope *S,
+                                       bool AllowImplicitTag) {
   if (!getLangOpts().CX || !II)
     return nullptr;
   ParsedType T = getTypeName(*II, Loc, S);
+  if (!T && AllowImplicitTag)
+    T = getCxImplicitTagType(*II, Loc, S);
   if (!T)
     return nullptr;
   // Unions are accepted here and rejected in ActOnCxConstruction, so the

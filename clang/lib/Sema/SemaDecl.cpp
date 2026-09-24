@@ -863,7 +863,8 @@ static bool isResultTypeOrTemplate(LookupResult &R, const Token &NextToken) {
 static bool isTagTypeWithMissingTag(Sema &SemaRef, LookupResult &Result,
                                     Scope *S, CXXScopeSpec &SS,
                                     IdentifierInfo *&Name,
-                                    SourceLocation NameLoc) {
+                                    SourceLocation NameLoc,
+                                    bool CxImplicitTag = false) {
   LookupResult R(SemaRef, Name, NameLoc, Sema::LookupTagName);
   SemaRef.LookupParsedName(R, S, &SS, /*ObjectType=*/QualType());
   if (TagDecl *Tag = R.getAsSingle<TagDecl>()) {
@@ -890,15 +891,19 @@ static bool isTagTypeWithMissingTag(Sema &SemaRef, LookupResult &Result,
       break;
     }
 
-    StringRef TagName = FixItTagName.drop_back();
-    SemaRef.Diag(NameLoc, diag::err_use_of_tag_name_without_tag)
-      << Name << TagName << SemaRef.getLangOpts().CPlusPlus
-      << FixItHint::CreateInsertion(NameLoc, FixItTagName);
+    // Cx: where nothing ordinary has the name, a tag name is a type name;
+    // the caller has ruled out every position C could read.
+    if (!(CxImplicitTag && Result.empty())) {
+      StringRef TagName = FixItTagName.drop_back();
+      SemaRef.Diag(NameLoc, diag::err_use_of_tag_name_without_tag)
+          << Name << TagName << SemaRef.getLangOpts().CPlusPlus
+          << FixItHint::CreateInsertion(NameLoc, FixItTagName);
 
-    for (LookupResult::iterator I = Result.begin(), IEnd = Result.end();
-         I != IEnd; ++I)
-      SemaRef.Diag((*I)->getLocation(), diag::note_decl_hiding_tag_type)
-        << Name << TagName;
+      for (LookupResult::iterator I = Result.begin(), IEnd = Result.end();
+           I != IEnd; ++I)
+        SemaRef.Diag((*I)->getLocation(), diag::note_decl_hiding_tag_type)
+            << Name << TagName;
+    }
 
     // Replace lookup results with just the tag decl.
     Result.clear(Sema::LookupTagName);
@@ -978,9 +983,15 @@ Corrected:
     if (SS.isEmpty() && NextToken.is(tok::l_paren)) {
       // Cx: inside a method body this may be another method of the receiver,
       // which is not an undeclared C function. Leave it to the expression
-      // path, which resolves the receiver.
+      // path, which resolves the receiver. So may a construction written with
+      // a bare tag name; the expression path decides whether C could read it
+      // as a call instead.
       if (getLangOpts().CX && isCxImplicitSelfMember(NameInfo))
         return NameClassification::Unknown();
+      if (getLangOpts().CX)
+        if (ParsedType Tag = getCxImplicitTagType(*Name, NameLoc, S);
+            Tag && GetTypeFromParser(Tag)->getAs<RecordType>())
+          return NameClassification::Unknown();
 
       // In C++, this is an ADL-only call.
       // FIXME: Reference?
@@ -1019,9 +1030,14 @@ Corrected:
 
     // In C, we first see whether there is a tag type by the same name, in
     // which case it's likely that the user just forgot to write "enum",
-    // "struct", or "union".
+    // "struct", or "union". In Cx, a tag name followed by a declarator is a
+    // type name, since C has no reading for it.
     if (!getLangOpts().CPlusPlus && !SecondTry &&
-        isTagTypeWithMissingTag(*this, Result, S, SS, Name, NameLoc)) {
+        isTagTypeWithMissingTag(
+            *this, Result, S, SS, Name, NameLoc,
+            getLangOpts().CX &&
+                NextToken.isOneOf(tok::identifier, tok::star, tok::kw_const,
+                                  tok::kw_volatile, tok::kw_restrict))) {
       break;
     }
 
