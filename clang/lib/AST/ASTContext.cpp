@@ -6882,7 +6882,14 @@ ASTContext::getUnaryTransformType(QualType BaseType, QualType UnderlyingType,
 const IdentifierInfo *ASTContext::getCxModuleOwner(SourceLocation Loc) const {
   if (!CxModules || Loc.isInvalid())
     return nullptr;
-  FileID FID = SourceMgr.getFileID(SourceMgr.getExpansionLoc(Loc));
+  SourceLocation Expansion = SourceMgr.getExpansionLoc(Loc);
+  FileID FID = SourceMgr.getFileID(Expansion);
+  // Preprocessed input: the owner is that of the file a line marker names.
+  if (CxModules->usesPresumedFiles(FID)) {
+    PresumedLoc P = SourceMgr.getPresumedLoc(Expansion);
+    return P.isValid() ? CxModules->getPresumedOwner(FID, P.getFilename()).Name
+                       : nullptr;
+  }
   return CxModules->getOwner(FID).Name;
 }
 

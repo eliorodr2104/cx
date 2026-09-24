@@ -3168,7 +3168,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
             if (!Args.hasArgNoClaim(options::OPT_E) && !CCCIsCPP())
               Diag(IsCLMode() ? clang::diag::err_drv_unknown_stdin_type_clang_cl
                               : clang::diag::err_drv_unknown_stdin_type);
-            Ty = types::TY_C;
+            // The Cx driver reads C as Cx, from stdin as from a file.
+            Ty = CCCIsCX() ? types::TY_CX : types::TY_C;
           }
         } else {
           // Otherwise lookup by extension.

@@ -928,6 +928,20 @@ TEST_F(InterpolateTest, DriverModes) {
             "clang -D bar.cpp --driver-mode=cl /TP");
 }
 
+TEST_F(InterpolateTest, Cx) {
+  // The Cx driver reads C files as Cx, so a header inferred from one of its
+  // commands is a Cx header, and a source file needs nothing.
+  add("dir/cx.c", "clangx", "");
+  EXPECT_EQ(getCommand("dir/other.h"), "clangx -D dir/cx.c -x cx-header");
+  EXPECT_EQ(getCommand("dir/other.c"), "clangx -D dir/cx.c");
+
+  // Any other driver needs -x to read a C file as Cx, whatever the file is.
+  Entries.clear();
+  add("dir/x.c", "-x cx");
+  EXPECT_EQ(getCommand("dir/y.h"), "clang -D dir/x.c -x cx-header");
+  EXPECT_EQ(getCommand("dir/y.c"), "clang -D dir/x.c -x cx");
+}
+
 TEST(TransferCompileCommandTest, Smoke) {
   CompileCommand Cmd;
   Cmd.Filename = "foo.cc";

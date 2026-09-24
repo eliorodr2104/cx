@@ -1819,9 +1819,53 @@ void StmtPrinter::PrintCallArgs(CallExpr *Call) {
 }
 
 void StmtPrinter::VisitCallExpr(CallExpr *Call) {
-  PrintExpr(Call->getCallee());
+  // Cx: a method call is written on its receiver, which the call passes as its
+  // first argument, and a call to a Cx function writes the labels its callee
+  // declares. An initializer is only reached through construction.
+  const FunctionDecl *FD = Call->getDirectCallee();
+  bool CxCall = FD && (FD->hasAttr<CxMethodAttr>() || FD->hasAttr<CxLinkageAttr>());
+  if (!CxCall) {
+    PrintExpr(Call->getCallee());
+    OS << "(";
+    PrintCallArgs(Call);
+    OS << ")";
+    return;
+  }
+
+  unsigned First = 0;
+  if (FD->hasAttr<CxMethodAttr>() && Call->getNumArgs() &&
+      FD->getDeclName().isIdentifier() && FD->getName() != "init") {
+    Expr *Self = Call->getArg(0)->IgnoreImpCasts();
+    bool ThroughPointer = true;
+    if (auto *UO = dyn_cast<UnaryOperator>(Self);
+        UO && UO->getOpcode() == UO_AddrOf) {
+      Self = UO->getSubExpr();
+      ThroughPointer = false;
+    }
+    bool Postfix = isa<DeclRefExpr, MemberExpr, ArraySubscriptExpr, CallExpr,
+                       ParenExpr, CompoundLiteralExpr>(Self->IgnoreImpCasts());
+    if (!Postfix)
+      OS << "(";
+    PrintExpr(Self);
+    if (!Postfix)
+      OS << ")";
+    OS << (ThroughPointer ? "->" : ".") << FD->getName();
+    First = 1;
+  } else {
+    PrintExpr(Call->getCallee());
+  }
+
   OS << "(";
-  PrintCallArgs(Call);
+  for (unsigned I = First, E = Call->getNumArgs(); I != E; ++I) {
+    if (isa<CXXDefaultArgExpr>(Call->getArg(I)))
+      break;
+    if (I != First)
+      OS << ", ";
+    if (I < FD->getNumParams())
+      if (const auto *L = FD->getParamDecl(I)->getAttr<CxArgumentLabelAttr>())
+        OS << L->getLabel()->getName() << ": ";
+    PrintExpr(Call->getArg(I));
+  }
   OS << ")";
 }
 

@@ -575,7 +575,32 @@ void DeclPrinter::VisitDeclContext(DeclContext *DC, bool Indent) {
 }
 
 void DeclPrinter::VisitTranslationUnitDecl(TranslationUnitDecl *D) {
+  // Cx: the primary file's module, so the output compiles to the same
+  // symbols. Declarations from other modules' headers are printed in the same
+  // file and take that module too; one printed file cannot say otherwise.
+  if (Context.getLangOpts().CX) {
+    const SourceManager &SM = Context.getSourceManager();
+    if (const IdentifierInfo *Owner = Context.getCxModuleOwner(
+            SM.getLocForStartOfFile(SM.getMainFileID())))
+      Out << "#module " << Owner->getName() << "\n";
+  }
   VisitDeclContext(D, false);
+}
+
+/// Cx access specifiers and `~mutating`, in the order a member is written.
+static void printCxMemberIntroducers(raw_ostream &Out, const Decl *D) {
+  static const char *const Levels[] = {"public", "internal", "private"};
+  if (const auto *A = D->getAttr<CxAccessAttr>()) {
+    unsigned Read = A->getRead(), Write = A->getWrite();
+    if (Read && Read < 3)
+      Out << Levels[Read] << ' ';
+    if (Write != Read && Write < 3)
+      Out << Levels[Write] << "(set) ";
+  }
+  if (const auto *FD = dyn_cast<FunctionDecl>(D);
+      FD && FD->hasAttr<CxMethodAttr>() && FD->getNumParams())
+    if (FD->getParamDecl(0)->getType()->getPointeeType().isConstQualified())
+      Out << "~mutating ";
 }
 
 void DeclPrinter::VisitTypedefDecl(TypedefDecl *D) {
@@ -688,6 +713,8 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
   CXXConstructorDecl *CDecl = dyn_cast<CXXConstructorDecl>(D);
   CXXConversionDecl *ConversionDecl = dyn_cast<CXXConversionDecl>(D);
   CXXDeductionGuideDecl *GuideDecl = dyn_cast<CXXDeductionGuideDecl>(D);
+  if (!Policy.SuppressSpecifiers)
+    printCxMemberIntroducers(Out, D);
   if (!Policy.SuppressSpecifiers) {
     switch (D->getStorageClass()) {
     case SC_None: break;
@@ -752,15 +779,18 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
     if (FT) {
       llvm::raw_string_ostream POut(Proto);
       DeclPrinter ParamPrinter(POut, SubPolicy, Context, Indentation);
-      for (unsigned i = 0, e = D->getNumParams(); i != e; ++i) {
-        if (i) POut << ", ";
+      // A Cx method's receiver is implicit, never written.
+      unsigned FirstParam = D->hasAttr<CxMethodAttr>() ? 1 : 0;
+      for (unsigned i = FirstParam, e = D->getNumParams(); i < e; ++i) {
+        if (i != FirstParam) POut << ", ";
         ParamPrinter.VisitParmVarDecl(D->getParamDecl(i));
       }
 
       if (FT->isVariadic()) {
-        if (D->getNumParams()) POut << ", ";
+        if (D->getNumParams() > FirstParam) POut << ", ";
         POut << "...";
-      } else if (!D->getNumParams() && !Context.getLangOpts().CPlusPlus) {
+      } else if (D->getNumParams() <= FirstParam &&
+                 !Context.getLangOpts().CPlusPlus) {
         // The function has a prototype, so it needs to retain the prototype
         // in C.
         POut << "void";
@@ -922,6 +952,8 @@ void DeclPrinter::VisitFieldDecl(FieldDecl *D) {
     Out << "mutable ";
   if (!Policy.SuppressSpecifiers && D->isModulePrivate())
     Out << "__module_private__ ";
+  if (!Policy.SuppressSpecifiers)
+    printCxMemberIntroducers(Out, D);
 
   Out << D->getASTContext().getUnqualifiedObjCPointerType(D->getType()).
          stream(Policy, D->getName(), Indentation);
@@ -991,10 +1023,17 @@ void DeclPrinter::VisitVarDecl(VarDecl *D) {
     }
   }
 
-  printDeclType(T, (isa<ParmVarDecl>(D) && Policy.CleanUglifiedParameters &&
+  StringRef Name = (isa<ParmVarDecl>(D) && Policy.CleanUglifiedParameters &&
                     D->getIdentifier())
                        ? D->getIdentifier()->deuglifiedName()
-                       : D->getName());
+                       : D->getName();
+  // Cx: an argument label is written before the local name.
+  std::string Labelled;
+  if (const auto *L = D->getAttr<CxArgumentLabelAttr>()) {
+    Labelled = (L->getLabel()->getName() + " " + Name).str();
+    Name = Labelled;
+  }
+  printDeclType(T, Name);
 
   if (std::optional<std::string> Attrs =
           prettyPrintAttributes(D, AttrPosAsWritten::Right))

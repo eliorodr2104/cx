@@ -614,10 +614,14 @@ void Preprocessor::EnterMainSourceFile() {
     bool BuildingPCH =
         TUKind == TU_Prefix && !getPreprocessorOpts().GeneratePreamble;
     if (getLangOpts().CX && !getLangOpts().CxModuleName.empty() &&
-        !BuildingPCH)
-      CxModules.setOwner(MainFileID,
-                         {getIdentifierInfo(getLangOpts().CxModuleName),
-                          SourceLocation(), /*FromBuild=*/true});
+        !BuildingPCH) {
+      IdentifierInfo *Name = getIdentifierInfo(getLangOpts().CxModuleName);
+      CxModules.setOwner(MainFileID, {Name, SourceLocation(),
+                                      /*FromBuild=*/true});
+      if (Callbacks)
+        Callbacks->CxModuleOwner(SourceMgr.getLocForStartOfFile(MainFileID),
+                                 Name);
+    }
 
     // Record the first PP token in the main file. This is used to generate
     // better diagnostics for C++ modules.

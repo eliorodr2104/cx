@@ -167,6 +167,7 @@ public:
                           bool ModuleImported,
                           SrcMgr::CharacteristicKind FileType) override;
   void Ident(SourceLocation Loc, StringRef str) override;
+  void CxModuleOwner(SourceLocation Loc, const IdentifierInfo *Name) override;
   void PragmaMessage(SourceLocation Loc, StringRef Namespace,
                      PragmaMessageKind Kind, StringRef Str) override;
   void PragmaDebug(SourceLocation Loc, StringRef DebugType) override;
@@ -554,6 +555,16 @@ void PrintPPOutputPPCallbacks::Ident(SourceLocation Loc, StringRef S) {
   OS->write("#ident ", strlen("#ident "));
   OS->write(S.begin(), S.size());
   setEmittedTokensOnThisLine();
+}
+
+/// Cx ownership is a property of the source file, which the preprocessed
+/// output only names in line markers. Writing the owner after the marker keeps
+/// it, so compiling the output gives the same symbols as the source.
+void PrintPPOutputPPCallbacks::CxModuleOwner(SourceLocation Loc,
+                                             const IdentifierInfo *Name) {
+  MoveToLine(Loc, /*RequireStartOfLine=*/true);
+  *OS << "#module " << Name->getName();
+  setEmittedDirectiveOnThisLine();
 }
 
 /// MacroDefined - This hook is called whenever a macro definition is seen.

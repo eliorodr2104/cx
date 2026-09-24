@@ -5670,6 +5670,11 @@ void ASTReader::InitializeContext() {
   assert(ContextObj && "no context to initialize");
   ASTContext &Context = *ContextObj;
 
+  // Cx ownership travels in the AST file and lives with the preprocessor. A
+  // context built for an AST file has no Sema to connect the two.
+  if (PP.getLangOpts().CX)
+    Context.setCxModuleOwnership(&PP.getCxModuleOwnership());
+
   // If there's a listener, notify them that we "read" the translation unit.
   if (DeserializationListener)
     DeserializationListener->DeclRead(

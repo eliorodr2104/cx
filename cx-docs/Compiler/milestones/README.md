@@ -28,5 +28,5 @@ one slice of a roadmap row that is being implemented in stages; a dotted number
 - [M4.4 — No crash on M0–M4 input; methods look up their receiver first](M4.4.md) — **Completed**
 - [M4.5 — Access control, field defaults and construction agree with C initialization](M4.5.md) — **Completed**
 - [M4.6 — Linkage and mangling that link, and don't collide](M4.6.md) — **Completed**
-- [M4.7 — Tooling and the preprocessor keep Cx meaning](M4.7.md) — **Planned**
+- [M4.7 — Tooling and the preprocessor keep Cx meaning](M4.7.md) — **Completed**
 - [M5a — Implicit tag names](M5a.md) — **Planned**

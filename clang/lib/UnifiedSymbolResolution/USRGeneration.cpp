@@ -154,6 +154,10 @@ public:
 
   void GenExtSymbolContainer(const NamedDecl *D);
 
+  /// Cx identity beyond the C name: the owning module, and a function's
+  /// argument labels. Two Cx entities that differ only there are distinct.
+  void GenCxIdentity(const NamedDecl *D);
+
   /// Generate the string component containing the location of the
   ///  declaration.
   bool GenLoc(const Decl *D, bool IncludeOffset);
@@ -273,6 +277,7 @@ void USRGenerator::VisitFunctionDecl(const FunctionDecl *D) {
   // template argument names in constructors to make their USR more stable.
   Policy.SuppressTemplateArgsInCXXConstructors = true;
   D->getDeclName().print(Out, Policy);
+  GenCxIdentity(D);
 
   if ((!LangOpts.CPlusPlus || D->isExternC()) &&
       !D->hasAttr<OverloadableAttr>())
@@ -348,6 +353,26 @@ void USRGenerator::VisitNamedDecl(const NamedDecl *D) {
   }
 }
 
+void USRGenerator::GenCxIdentity(const NamedDecl *D) {
+  const auto *A = D->getAttr<CxLinkageAttr>();
+  if (!A)
+    return;
+  Out << "@CX@";
+  if (const IdentifierInfo *M = A->getModule())
+    Out << M->getName();
+  const auto *FD = dyn_cast<FunctionDecl>(D);
+  if (!FD)
+    return;
+  ArrayRef<ParmVarDecl *> Params = FD->parameters();
+  if (FD->hasAttr<CxMethodAttr>() && !Params.empty())
+    Params = Params.drop_front(); // the receiver
+  for (const ParmVarDecl *P : Params) {
+    Out << '$';
+    if (const auto *L = P->getAttr<CxArgumentLabelAttr>())
+      Out << L->getLabel()->getName();
+  }
+}
+
 void USRGenerator::VisitVarDecl(const VarDecl *D) {
   // VarDecls can be declared 'extern' within a function or method body,
   // but their enclosing DeclContext is the function, not the TU.  We need
@@ -377,6 +402,7 @@ void USRGenerator::VisitVarDecl(const VarDecl *D) {
     IgnoreResults = true;
   else
     Out << '@' << s;
+  GenCxIdentity(D);
 
   // For a template specialization, mangle the template arguments.
   if (const VarTemplateSpecializationDecl *Spec =

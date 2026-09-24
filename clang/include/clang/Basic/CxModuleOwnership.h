@@ -21,6 +21,8 @@
 
 #include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringMap.h"
+#include <string>
 
 namespace clang {
 
@@ -76,6 +78,42 @@ public:
     return It == WithDeclarations.end() ? SourceLocation() : It->second;
   }
 
+  /// Preprocessed input -- the output of `-E` or `-frewrite-includes` --
+  /// holds many source files in one, separated by GNU line markers. Once
+  /// \p FID has one, ownership follows the file each marker names, which is
+  /// what `-E` writes a `#module` for. \p Presumed is the first such name,
+  /// which is the primary source file the input was produced from.
+  void notePresumedFiles(FileID FID, StringRef Presumed) {
+    PresumedPrimary.try_emplace(FID, Presumed.str());
+  }
+
+  /// Whether ownership in \p FID follows line markers.
+  bool usesPresumedFiles(FileID FID) const {
+    return PresumedPrimary.contains(FID);
+  }
+
+  /// The owner of the source file \p Presumed, named by a line marker in
+  /// \p FID. The primary file also takes an owner the build assigned to the
+  /// input as a whole.
+  Owner getPresumedOwner(FileID FID, StringRef Presumed) const {
+    auto It = PresumedOwners.find(Presumed);
+    if (It != PresumedOwners.end())
+      return It->second;
+    auto Primary = PresumedPrimary.find(FID);
+    if (Primary != PresumedPrimary.end() && Primary->second == Presumed) {
+      Owner O = getOwner(FID);
+      if (O.FromBuild)
+        return O;
+    }
+    return Owner{};
+  }
+
+  /// Record \p O as the owner of the source file \p Presumed. Returns false,
+  /// changing nothing, if it already has one.
+  bool setPresumedOwner(StringRef Presumed, Owner O) {
+    return PresumedOwners.try_emplace(Presumed, O).second;
+  }
+
   using const_iterator = llvm::DenseMap<FileID, Owner>::const_iterator;
   const_iterator begin() const { return Owners.begin(); }
   const_iterator end() const { return Owners.end(); }
@@ -83,6 +121,8 @@ public:
 private:
   llvm::DenseMap<FileID, Owner> Owners;
   llvm::DenseMap<FileID, SourceLocation> WithDeclarations;
+  llvm::DenseMap<FileID, std::string> PresumedPrimary;
+  llvm::StringMap<Owner> PresumedOwners;
 };
 
 } // namespace clang

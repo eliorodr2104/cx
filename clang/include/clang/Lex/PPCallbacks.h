@@ -232,6 +232,11 @@ public:
   virtual void Ident(SourceLocation Loc, StringRef str) {
   }
 
+  /// Callback invoked when a Cx source file gets its module owner: at its
+  /// `#module` directive, or at the start of the primary file when the build
+  /// assigned one with `-fcx-module=`.
+  virtual void CxModuleOwner(SourceLocation Loc, const IdentifierInfo *Name) {}
+
   /// Callback invoked when start reading any pragma directive.
   virtual void PragmaDirective(SourceLocation Loc,
                                PragmaIntroducerKind Introducer) {
@@ -596,6 +601,11 @@ public:
   void Ident(SourceLocation Loc, StringRef str) override {
     First->Ident(Loc, str);
     Second->Ident(Loc, str);
+  }
+
+  void CxModuleOwner(SourceLocation Loc, const IdentifierInfo *Name) override {
+    First->CxModuleOwner(Loc, Name);
+    Second->CxModuleOwner(Loc, Name);
   }
 
   void PragmaDirective(SourceLocation Loc,

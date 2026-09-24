@@ -586,6 +586,9 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
     }
   }
   FD->setParams(Params);
+  // The declaration extends to the end of its declarator; a body, when it
+  // follows, extends it further.
+  FD->setRangeEnd(D.getSourceRange().getEnd());
   // Linkage for a declaration held by a record is computed the way a class
   // member's is, which needs an access specifier. Cx members are public by
   // default; M4b makes that explicit and adds the other levels.

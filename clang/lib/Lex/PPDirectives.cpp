@@ -1786,6 +1786,7 @@ void Preprocessor::HandleDigitDirective(Token &DigitTok) {
 
   bool IsFileEntry = false, IsFileExit = false;
   int FilenameID = -1;
+  std::string MarkerFile;
   SrcMgr::CharacteristicKind FileKind = SrcMgr::C_User;
 
   // If the StrTok is "eod", then it wasn't present.  Otherwise, it must be a
@@ -1825,13 +1826,23 @@ void Preprocessor::HandleDigitDirective(Token &DigitTok) {
 
     // Exiting to an empty string means pop to the including file, so leave
     // FilenameID as -1 in that case.
-    if (!(IsFileExit && Literal.GetString().empty()))
+    if (!(IsFileExit && Literal.GetString().empty())) {
       FilenameID = SourceMgr.getLineTableFilenameID(Literal.GetString());
+      MarkerFile = Literal.GetString().str();
+    }
   }
 
   // Create a line note with this information.
   SourceMgr.AddLineNote(DigitTok.getLocation(), LineNo, FilenameID, IsFileEntry,
                         IsFileExit, FileKind);
+
+  // Cx: a line marker naming a file makes this preprocessed input, where
+  // ownership follows the named file (see CxModuleOwnership). The predefines
+  // buffer's own markers are not source files.
+  if (getLangOpts().CX && FilenameID != -1 &&
+      !SourceMgr.isInPredefinedFile(DigitTok.getLocation()))
+    CxModules.notePresumedFiles(SourceMgr.getFileID(DigitTok.getLocation()),
+                                MarkerFile);
 
   // If the preprocessor has callbacks installed, notify them of the #line
   // change.  This is used so that the line marker comes out in -E mode for
@@ -4366,6 +4377,34 @@ void Preprocessor::HandleCxModuleDirective(Token ModuleTok,
   }
 
   FileID FID = SourceMgr.getFileID(HashLoc);
+
+  // Preprocessed input records the owner of the file the current line marker
+  // names. It was checked where that file was compiled from source, and `-E`
+  // writes it again after each marker that enters the file, so a repeat of
+  // the same name is expected; placement is not rechecked.
+  if (CxModules.usesPresumedFiles(FID)) {
+    PresumedLoc P = SourceMgr.getPresumedLoc(HashLoc);
+    if (P.isInvalid())
+      return;
+    CxModuleOwnership::Owner Existing =
+        CxModules.getPresumedOwner(FID, P.getFilename());
+    if (Existing && Existing.Name != Name) {
+      if (Existing.FromBuild)
+        Diag(NameTok, diag::err_cx_module_build_mismatch)
+            << Name << Existing.Name;
+      else {
+        Diag(NameTok, diag::err_cx_module_repeated);
+        Diag(Existing.DirectiveLoc, diag::note_cx_module_previous);
+      }
+      return;
+    }
+    CxModules.setPresumedOwner(P.getFilename(),
+                               {Name, ModuleTok.getLocation(), false});
+    if (Callbacks)
+      Callbacks->CxModuleOwner(HashLoc, Name);
+    return;
+  }
+
   CxModuleOwnership::Owner Existing = CxModules.getOwner(FID);
   if (Existing) {
     // A build assignment and a source directive must agree; two source
@@ -4390,6 +4429,8 @@ void Preprocessor::HandleCxModuleDirective(Token ModuleTok,
   }
 
   CxModules.setOwner(FID, {Name, ModuleTok.getLocation(), /*FromBuild=*/false});
+  if (Callbacks)
+    Callbacks->CxModuleOwner(HashLoc, Name);
 }
 
 /// HandleCXXModuleDirective - Handle C++ module declaration directives.

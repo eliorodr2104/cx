@@ -106,6 +106,9 @@ static types::ID foldType(types::ID Lang) {
   case types::TY_C:
   case types::TY_CHeader:
     return types::TY_C;
+  case types::TY_CX:
+  case types::TY_CXHeader:
+    return types::TY_CX;
   case types::TY_ObjC:
   case types::TY_ObjCHeader:
     return types::TY_ObjC;
@@ -163,6 +166,8 @@ struct TransferableCommand {
   LangStandard::Kind Std = LangStandard::lang_unspecified;
   // Whether the command line is for the cl-compatible driver.
   bool ClangCLMode;
+  // Whether the command line is for the Cx driver, which reads C files as Cx.
+  bool CxMode = false;
 
   TransferableCommand(CompileCommand C)
       : Cmd(std::move(C)), Type(guessType(Cmd.Filename)) {
@@ -178,6 +183,11 @@ struct TransferableCommand {
       ClangCLMode = !TmpArgv.empty() &&
                     driver::IsClangCL(driver::getDriverMode(
                         TmpArgv.front(), llvm::ArrayRef(TmpArgv).slice(1)));
+      CxMode = !TmpArgv.empty() &&
+               driver::getDriverMode(TmpArgv.front(),
+                                     llvm::ArrayRef(TmpArgv).slice(1)) == "cx";
+      if (CxMode && Type)
+        Type = types::lookupCxTypeForCType(*Type);
       ArgList = {TmpArgv.begin(), TmpArgv.end()};
     }
 
@@ -247,8 +257,13 @@ struct TransferableCommand {
     Result.Filename = std::string(Filename);
     bool TypeCertain;
     auto TargetType = guessType(Filename, &TypeCertain);
+    // A Cx command reads C files as Cx. Only the Cx driver does that from the
+    // extension alone; any other driver needs -x, whatever the file is.
+    bool NeedsCxType = Type && *Type == types::TY_CX && !CxMode &&
+                       (TargetType == types::TY_C ||
+                        TargetType == types::TY_CHeader);
     // If the filename doesn't determine the language (.h), transfer with -x.
-    if ((!TargetType || !TypeCertain) && Type) {
+    if (((!TargetType || !TypeCertain) && Type) || NeedsCxType) {
       // Use *Type, or its header variant if the file is a header.
       // Treat no/invalid extension as header (e.g. C++ standard library).
       TargetType =
