@@ -5126,11 +5126,12 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
       break;
     }
 
-    ExpectAndConsume(tok::semi, diag::err_expected_semi_decl_list);
-    // Skip to end of block or statement to avoid ext-warning on extra ';'.
-    SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
-    // If we stopped at a ';', eat it.
-    TryConsumeToken(tok::semi);
+    if (ExpectAndConsume(tok::semi, diag::err_expected_semi_decl_list)) {
+      // Skip to end of block or statement to avoid ext-warning on extra ';'.
+      SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
+      // If we stopped at a ';', eat it.
+      TryConsumeToken(tok::semi);
+    }
   }
 
   T.consumeClose();
@@ -6208,9 +6209,10 @@ void Parser::ParseCxContinuationBody(RecordDecl *RD) {
       ExpectAndConsume(tok::semi, diag::ext_expected_semi_decl_list);
       break;
     }
-    ExpectAndConsume(tok::semi, diag::err_expected_semi_decl_list);
-    SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
-    TryConsumeToken(tok::semi);
+    if (ExpectAndConsume(tok::semi, diag::err_expected_semi_decl_list)) {
+      SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
+      TryConsumeToken(tok::semi);
+    }
   }
 
   T.consumeClose();
@@ -6223,6 +6225,9 @@ void Parser::ParseCxMethodBody(Decl *MethodDecl, CachedTokens &Toks) {
   // complete, the same way C++ replays an inline member function body.
   assert(!Toks.empty() && "empty method body");
   ParenBraceBracketBalancer BalancerRAIIObj(*this);
+  // The body is replayed after tokens that follow it, so the token before the
+  // parser's position must be what it was before the replay.
+  llvm::SaveAndRestore<SourceLocation> SavedPrevTok(PrevTokLocation);
 
   Token BodyEnd;
   BodyEnd.startToken();

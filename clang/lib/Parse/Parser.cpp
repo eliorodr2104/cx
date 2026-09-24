@@ -133,6 +133,9 @@ bool Parser::ExpectAndConsume(tok::TokenKind ExpectedTok, unsigned DiagID,
     return false;
   }
 
+  if (ExpectedTok == tok::semi && TryCxImplicitSemicolon())
+    return false;
+
   // Detect common single-character typos and resume.
   if (IsCommonTypo(ExpectedTok, Tok)) {
     SourceLocation Loc = Tok.getLocation();
@@ -172,8 +175,37 @@ bool Parser::ExpectAndConsume(tok::TokenKind ExpectedTok, unsigned DiagID,
   return true;
 }
 
+bool Parser::TryCxImplicitSemicolon() {
+  // Cx: C requires a ';' here and there is none, so the code is not valid C.
+  // A line break, a closing brace or the end of the file stands in for it.
+  // Everything C can read as a continuation was read before reaching here,
+  // which is why `foo\n(bar);` stays a call. A `for` header checks its own
+  // separators and never gets here.
+  if (!getLangOpts().CX)
+    return false;
+  unsigned Boundary;
+  if (Tok.is(tok::eof))
+    Boundary = 2;
+  else if (Tok.isAtStartOfLine())
+    Boundary = 0;
+  else if (Tok.is(tok::r_brace))
+    Boundary = 1;
+  else
+    return false;
+  if (Tok.getLocation() == CxLastImpliedSemicolon)
+    return false;
+  CxLastImpliedSemicolon = Tok.getLocation();
+  SourceLocation EndOfPrevious = PP.getLocForEndOfToken(PrevTokLocation);
+  Diag(EndOfPrevious.isValid() ? EndOfPrevious : Tok.getLocation(),
+       diag::warn_cx_implicit_semicolon)
+      << Boundary << FixItHint::CreateInsertion(EndOfPrevious, ";");
+  return true;
+}
+
 bool Parser::ExpectAndConsumeSemi(unsigned DiagID, StringRef TokenUsed) {
   if (TryConsumeToken(tok::semi))
+    return false;
+  if (TryCxImplicitSemicolon())
     return false;
 
   if (Tok.is(tok::code_completion)) {

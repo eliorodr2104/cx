@@ -544,9 +544,10 @@ Retry:
     // If the result was valid, then we do want to diagnose this.  Use
     // ExpectAndConsume to emit the diagnostic, even though we know it won't
     // succeed.
-    ExpectAndConsume(tok::semi, diag::err_expected_semi_after_stmt, SemiError);
-    // Skip until we see a } or ;, but don't eat it.
-    SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
+    if (ExpectAndConsume(tok::semi, diag::err_expected_semi_after_stmt,
+                         SemiError))
+      // Skip until we see a } or ;, but don't eat it.
+      SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
   }
 
   return Res;

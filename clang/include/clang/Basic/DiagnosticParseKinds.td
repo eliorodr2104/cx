@@ -228,6 +228,9 @@ def err_expected_external_declaration : Error<"expected external declaration">;
 def err_extraneous_closing_brace : Error<"extraneous closing brace ('}')">;
 def err_expected_semi_declaration : Error<
   "expected ';' at end of declaration">;
+def warn_cx_implicit_semicolon : Warning<
+  "';' implied by the %select{line break|closing brace|end of file}0">,
+  InGroup<CxImplicitSemicolon>, DefaultIgnore;
 def err_expected_semi_decl_list : Error<
   "expected ';' at end of declaration list">;
 def ext_expected_semi_decl_list : ExtWarn<

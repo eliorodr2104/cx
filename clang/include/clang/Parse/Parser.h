@@ -897,6 +897,16 @@ private:
   /// If the next token is not a semicolon, this emits the specified diagnostic,
   /// or, if there's just some closing-delimiter noise (e.g., ')' or ']') prior
   /// to the semicolon, consumes that extra token.
+  /// Cx: where a ';' is required and missing, accept a line break, a
+  /// closing brace or the end of the file in its place. Returns true when it
+  /// did, consuming nothing.
+  bool TryCxImplicitSemicolon();
+
+  /// Where TryCxImplicitSemicolon last implied a ';'. It consumes nothing, so
+  /// implying a second one at the same token would let a recovery loop stand
+  /// still; the second time is an ordinary missing ';'.
+  SourceLocation CxLastImpliedSemicolon;
+
   bool ExpectAndConsumeSemi(unsigned DiagID, StringRef TokenUsed = "");
 
   /// Returns true if the current token is likely the start of a new
