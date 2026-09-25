@@ -6102,6 +6102,12 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema *SemaPtr, StringRef isysroot,
   for (const IdentifierInfo *II : IIs)
     getIdentifierRef(II);
 
+  // Cx: the module names of the ownership record, written after the
+  // identifier table, need their IDs before it is written.
+  if (PP->getLangOpts().CX)
+    for (const auto &Owned : PP->getCxModuleOwnership())
+      getIdentifierRef(Owned.second.Name);
+
   // Write the set of weak, undeclared identifiers. We always write the
   // entire table, since later PCH files in a PCH chain are only interested in
   // the results at the end of the chain.
