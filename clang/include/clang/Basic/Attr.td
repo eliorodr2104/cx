@@ -1108,6 +1108,24 @@ def CxEnumPayload : InheritableAttr {
   let Documentation = [InternalOnly];
 }
 
+/// The hidden variable a Cx switch evaluates its condition into; it marks the
+/// C switch that lowers a Cx one. Added by Sema.
+def CxMatch : InheritableAttr {
+  let Spellings = [];
+  let Subjects = SubjectList<[Var], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
+/// A variable a Cx switch pattern binds to payload element Index.
+def CxPatternBinding : InheritableAttr {
+  let Spellings = [];
+  let Args = [UnsignedArgument<"Index">];
+  let Subjects = SubjectList<[Var], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
 def InferredNoReturn : InheritableAttr {
   let Spellings = [];
   let SemaHandler = 0;

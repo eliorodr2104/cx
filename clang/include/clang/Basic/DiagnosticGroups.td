@@ -391,6 +391,7 @@ def CPre2yCompatPedantic : DiagGroup<"pre-c2y-compat-pedantic",
 // declared elsewhere.
 def CxNearMiss : DiagGroup<"cx-near-miss">;
 def CxImplicitSemicolon : DiagGroup<"cx-implicit-semicolon">;
+def CxUnreachableDefault : DiagGroup<"cx-unreachable-default">;
 
 def CXXPre14Compat : DiagGroup<"pre-c++14-compat">;
 def : DiagGroup<"c++98-c++11-compat", [CXXPre14Compat]>;

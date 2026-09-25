@@ -242,6 +242,12 @@ def err_cx_enum_clause_end : Error<
   "expected ',', ';', a line break or '}' after a Cx enum case">;
 def err_cx_enum_case_needs_type : Error<
   "the enum of '.%0' is not known here; write 'Type.%0'">;
+def err_cx_switch_expected_case : Error<
+  "a Cx switch holds 'case' and 'default' clauses">;
+def err_cx_switch_pattern : Error<
+  "a case of a Cx switch is written '.name' or 'Type.name'">;
+def err_cx_switch_empty_case : Error<
+  "this case has no body; list the cases in one label to share a body">;
 def err_expected_semi_decl_list : Error<
   "expected ';' at end of declaration list">;
 def ext_expected_semi_decl_list : ExtWarn<

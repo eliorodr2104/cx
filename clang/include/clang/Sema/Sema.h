@@ -4434,6 +4434,49 @@ public:
                                  ArrayRef<SourceLocation> LabelLocs,
                                  MultiExprArg Args, SourceLocation RParen);
 
+  /// Cx: the state of a Cx switch while its body is parsed.
+  struct CxSwitchInfo {
+    EnumDecl *Enum = nullptr;
+    /// The hidden variable holding the condition.
+    VarDecl *Match = nullptr;
+    /// Each handled case and where.
+    llvm::MapVector<const EnumConstantDecl *, SourceLocation> Seen;
+    SourceLocation DefaultLoc;
+  };
+
+  /// Cx: when \p Cond has a Cx enum type, start a Cx switch on it: set
+  /// \p IsCx and return the SwitchStmt that lowers it.
+  StmtResult ActOnCxSwitchStart(SourceLocation SwitchLoc, SourceLocation LParen,
+                                Expr *Cond, SourceLocation RParen,
+                                CxSwitchInfo &Info, bool &IsCx);
+
+  /// Cx: the label value for case \p Name, `Qualifier.Name` when \p Qualifier
+  /// is set; \p Case receives the case.
+  ExprResult ActOnCxSwitchCase(CxSwitchInfo &Info, EnumDecl *Qualifier,
+                               IdentifierInfo *Name, SourceLocation NameLoc,
+                               EnumConstantDecl *&Case);
+
+  /// Cx: bind the payload elements of \p Case to \p Names (null for `_`), as
+  /// `const` copies declared in the current scope.
+  StmtResult ActOnCxSwitchBindings(CxSwitchInfo &Info, EnumConstantDecl *Case,
+                                   ArrayRef<IdentifierInfo *> Names,
+                                   ArrayRef<SourceLocation> Locs,
+                                   SourceLocation LParen);
+
+  /// Cx: check that every case is handled, add the default that traps on an
+  /// invalid value, and finish the switch over \p Clauses.
+  StmtResult ActOnCxSwitchFinish(SourceLocation SwitchLoc, Stmt *Switch,
+                                 CxSwitchInfo &Info,
+                                 SmallVectorImpl<Stmt *> &Clauses,
+                                 SourceLocation LBrace, SourceLocation RBrace);
+
+  /// Cx: whether \p S is the C switch that lowers a Cx switch.
+  static bool isCxSwitch(const SwitchStmt *S);
+
+  /// Cx: diagnose a `case` or `default` at \p Loc that belongs to a Cx switch
+  /// but is not at the top of its body; true if it was one.
+  bool diagnoseCxNestedSwitchLabel(SourceLocation Loc);
+
   /// Cx: diagnose a Cx enum value used as a condition; true if \p E is one.
   bool diagnoseCxEnumCondition(const Expr *E);
 

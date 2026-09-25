@@ -2864,6 +2864,23 @@ def err_cx_enum_payload_label : Error<
   "the payload of case %0 is labelled %1, but the argument is labelled %2">;
 def err_cx_enum_payload_compare : Error<
   "values of %0 cannot be compared with '%1'; match them with switch">;
+def err_cx_switch_nested_case : Error<
+  "a case of a Cx switch must be at the top of the switch body">;
+def err_cx_switch_wrong_enum : Error<"%0 is not a case of %1">;
+def err_cx_switch_duplicate : Error<"case %0 is already handled">;
+def note_cx_switch_previous : Note<"handled here">;
+def err_cx_switch_missing : Error<
+  "switch on %0 does not handle %1; add %plural{1:it|:them}2 or a 'default'">;
+def warn_cx_switch_default_unreachable : Warning<
+  "'default' is never reached: every case of %0 is handled">,
+  InGroup<CxUnreachableDefault>;
+def err_cx_switch_bind_no_payload : Error<
+  "case %0 has no payload to bind">;
+def err_cx_switch_bind_count : Error<
+  "case %0 has %1 payload %plural{1:element|:elements}1, but %2 "
+  "%plural{1:name is|:names are}2 bound">;
+def err_cx_switch_bind_several : Error<
+  "a label with several cases cannot bind payloads">;
 
 def err_auto_not_allowed_var_inst : Error<
   "'auto' variable template instantiation is not allowed">;

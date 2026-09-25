@@ -2145,6 +2145,10 @@ private:
   /// Cx: whether `. ident` and `[ ... ]` designators from here reach an `=`.
   bool isCxDesignatorAhead();
 
+  /// Cx: the body of a Cx switch, `{ case .a(x): ... default: ... }`.
+  StmtResult ParseCxSwitchBody(SourceLocation SwitchLoc, Stmt *Switch,
+                               Sema::CxSwitchInfo &Info);
+
   /// Cx: whether the `{` here opens an enum body with a payload case, a
   /// `name (` at the top level of the body.
   bool isCxPayloadEnumBody();
@@ -7627,11 +7631,14 @@ public:
   /// still have semantic errors in the condition. Additionally, it will assign
   /// the location of the outer-most '(' and ')', to LParenLoc and RParenLoc,
   /// respectively.
+  /// \p CxMatchCond: for a switch, receives a condition of Cx enum type
+  /// instead of \p CondResult, since that switch is pattern matching.
   bool ParseParenExprOrCondition(StmtResult *InitStmt,
                                  Sema::ConditionResult &CondResult,
                                  SourceLocation Loc, Sema::ConditionKind CK,
                                  SourceLocation &LParenLoc,
-                                 SourceLocation &RParenLoc);
+                                 SourceLocation &RParenLoc,
+                                 Expr **CxMatchCond = nullptr);
 
   /// ParseIfStatement
   /// \verbatim

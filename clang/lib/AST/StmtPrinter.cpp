@@ -119,6 +119,7 @@ namespace {
     }
 
     void PrintRawCompoundStmt(CompoundStmt *S);
+    void PrintCxSwitch(SwitchStmt *Node, VarDecl *Match);
     void PrintRawDecl(Decl *D);
     void PrintRawDeclStmt(const DeclStmt *S);
     void PrintRawIfStmt(IfStmt *If);
@@ -401,7 +402,104 @@ void StmtPrinter::VisitIfStmt(IfStmt *If) {
   PrintRawIfStmt(If);
 }
 
+/// Cx: the hidden variable of the C switch that lowers a Cx switch, or null.
+static VarDecl *getCxMatch(SwitchStmt *S) {
+  auto *DS = dyn_cast_or_null<DeclStmt>(S->getInit());
+  auto *VD = DS && DS->isSingleDecl() ? dyn_cast<VarDecl>(DS->getSingleDecl())
+                                      : nullptr;
+  return VD && VD->hasAttr<CxMatchAttr>() ? VD : nullptr;
+}
+
+/// Cx: the enum a Cx switch matches: the enum itself, or a payload enum's.
+static const EnumDecl *getCxMatchedEnum(QualType T) {
+  if (const auto *RT = T->getAs<RecordType>())
+    if (const auto *A = RT->getDecl()->getAttr<CxPayloadEnumAttr>())
+      return A->getPayloadEnum();
+  const auto *ET = T->getAs<EnumType>();
+  return ET ? ET->getDecl()->getDefinitionOrSelf() : nullptr;
+}
+
+/// Cx: print a Cx switch as it was written, from its lowering.
+void StmtPrinter::PrintCxSwitch(SwitchStmt *Node, VarDecl *Match) {
+  const EnumDecl *ED = getCxMatchedEnum(Match->getType());
+  Indent() << "switch (";
+  PrintExpr(Match->getInit());
+  OS << ") {" << NL;
+  auto *Body = dyn_cast_or_null<CompoundStmt>(Node->getBody());
+  ArrayRef<Stmt *> Clauses;
+  if (Body)
+    Clauses = ArrayRef<Stmt *>(Body->body_begin(), Body->body_end());
+  for (Stmt *Clause : Clauses) {
+    // The labels of one clause, and the body they share.
+    SmallVector<const EnumConstantDecl *, 2> Cases;
+    Stmt *S = Clause;
+    bool IsDefault = false;
+    while (auto *CS = dyn_cast<CaseStmt>(S)) {
+      const Expr *V = CS->getLHS()->IgnoreImplicit();
+      if (const auto *IL = dyn_cast<IntegerLiteral>(V))
+        for (const EnumConstantDecl *ECD : ED->enumerators())
+          if (llvm::APSInt::isSameValue(ECD->getInitVal(),
+                                        llvm::APSInt(IL->getValue(), true)))
+            Cases.push_back(ECD);
+      S = CS->getSubStmt();
+    }
+    if (auto *DS = dyn_cast<DefaultStmt>(Clause)) {
+      if (DS->getDefaultLoc().isInvalid())
+        continue; // The trap on an invalid value.
+      IsDefault = true;
+      S = DS->getSubStmt();
+    }
+    auto *Stmts = dyn_cast<CompoundStmt>(S);
+    if (!Stmts)
+      continue;
+    ArrayRef<Stmt *> Inner(Stmts->body_begin(), Stmts->body_end());
+    // Bindings come first, as one declaration of CxPatternBinding variables.
+    SmallVector<const VarDecl *, 4> Bound;
+    if (!Inner.empty())
+      if (auto *DS = dyn_cast<DeclStmt>(Inner.front());
+          DS && llvm::all_of(DS->decls(), [](const Decl *D) {
+            return D->hasAttr<CxPatternBindingAttr>();
+          })) {
+        for (const Decl *D : DS->decls())
+          Bound.push_back(cast<VarDecl>(D));
+        Inner = Inner.drop_front();
+      }
+    if (!Inner.empty())
+      if (auto *B = dyn_cast<BreakStmt>(Inner.back());
+          B && B->getBeginLoc().isInvalid())
+        Inner = Inner.drop_back(); // the implicit break
+    Indent();
+    if (IsDefault) {
+      OS << "default:";
+    } else {
+      OS << "case ";
+      for (auto [I, ECD] : llvm::enumerate(Cases))
+        OS << (I ? ", ." : ".") << ECD->getName();
+      if (Cases.size() == 1)
+        if (const auto *A = Cases[0]->getAttr<CxEnumPayloadAttr>();
+            A && !Bound.empty()) {
+          OS << '(';
+          for (unsigned I = 0, N = A->labels_size(); I != N; ++I) {
+            const VarDecl *Name = nullptr;
+            for (const VarDecl *VD : Bound)
+              if (VD->getAttr<CxPatternBindingAttr>()->getIndex() == I)
+                Name = VD;
+            OS << (I ? ", " : "") << (Name ? Name->getName() : "_");
+          }
+          OS << ')';
+        }
+      OS << ':';
+    }
+    OS << NL;
+    for (Stmt *Inside : Inner)
+      PrintStmt(Inside);
+  }
+  Indent() << "}" << NL;
+}
+
 void StmtPrinter::VisitSwitchStmt(SwitchStmt *Node) {
+  if (VarDecl *Match = getCxMatch(Node))
+    return PrintCxSwitch(Node, Match);
   Indent() << "switch (";
   if (Node->getInit())
     PrintInitStmt(Node->getInit(), 8);

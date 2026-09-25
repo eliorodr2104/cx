@@ -38,6 +38,6 @@ void rules(enum Raw r, enum Color c, int i) {
   (void)(r + 1);             // expected-error {{invalid operands}}
   r++;                       // expected-error {{cannot increment}}
   printf("%d", r);           // expected-error {{a value of 'enum Raw' cannot be passed to '...'; pass '.rawValue'}}
-  switch (r) { default: ; }  // expected-error {{a switch on 'enum Raw' needs Cx pattern matching}}
+  switch (r) { default: ; }  // pattern matching (M6d)
   int *p = &r;               // expected-error {{incompatible pointer types}}
 }

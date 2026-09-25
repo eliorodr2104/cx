@@ -55,6 +55,7 @@ Implemented and tested so far:
 - tuple types, literals, and destructuring
 - raw and simple enums with scoped cases, `.case` syntax, and `rawValue`
 - payload enums whose cases carry tuple payloads
+- exhaustive `switch` over Cx enums, with payload bindings and no fallthrough
 - implicit tag names and optional semicolons
 - PCH, preprocessing, code completion, and tooling support
 

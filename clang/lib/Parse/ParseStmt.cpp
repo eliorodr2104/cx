@@ -804,6 +804,11 @@ StmtResult Parser::ParseLabeledStatement(ParsedAttributes &Attrs,
 StmtResult Parser::ParseCaseStatement(ParsedStmtContext StmtCtx,
                                       bool MissingCase, ExprResult Expr) {
   assert((MissingCase || Tok.is(tok::kw_case)) && "Not a case stmt!");
+  // Cx: the labels of a Cx switch are at the top of its body only.
+  if (!MissingCase && Actions.diagnoseCxNestedSwitchLabel(Tok.getLocation())) {
+    SkipUntil(tok::colon, StopAtSemi);
+    return ParseStatement();
+  }
 
   // [OpenMP 5.1] 2.1.3: A stand-alone directive may not be used in place of a
   // substatement in a selection statement, in place of the loop body in an
@@ -954,6 +959,10 @@ StmtResult Parser::ParseCaseStatement(ParsedStmtContext StmtCtx,
 
 StmtResult Parser::ParseDefaultStatement(ParsedStmtContext StmtCtx) {
   assert(Tok.is(tok::kw_default) && "Not a default stmt!");
+  if (Actions.diagnoseCxNestedSwitchLabel(Tok.getLocation())) {
+    SkipUntil(tok::colon, StopAtSemi);
+    return ParseStatement();
+  }
 
   // [OpenMP 5.1] 2.1.3: A stand-alone directive may not be used in place of a
   // substatement in a selection statement, in place of the loop body in an
@@ -1299,7 +1308,8 @@ bool Parser::ParseParenExprOrCondition(StmtResult *InitStmt,
                                        SourceLocation Loc,
                                        Sema::ConditionKind CK,
                                        SourceLocation &LParenLoc,
-                                       SourceLocation &RParenLoc) {
+                                       SourceLocation &RParenLoc,
+                                       Expr **CxMatchCond) {
   BalancedDelimiterTracker T(*this, tok::l_paren);
   T.consumeOpen();
   SourceLocation Start = Tok.getLocation();
@@ -1308,6 +1318,14 @@ bool Parser::ParseParenExprOrCondition(StmtResult *InitStmt,
     Cond = ParseCXXCondition(InitStmt, Loc, CK, false);
   } else {
     ExprResult CondExpr = ParseExpression();
+    if (CxMatchCond && CondExpr.isUsable() &&
+        Actions.getCxEnum(CondExpr.get()->getType())) {
+      *CxMatchCond = CondExpr.get();
+      T.consumeClose();
+      LParenLoc = T.getOpenLocation();
+      RParenLoc = T.getCloseLocation();
+      return false;
+    }
 
     // If required, convert to a boolean value.
     if (CondExpr.isInvalid())
@@ -1706,9 +1724,32 @@ StmtResult Parser::ParseSwitchStatement(SourceLocation *TrailingElseLoc,
   Sema::ConditionResult Cond;
   SourceLocation LParen;
   SourceLocation RParen;
+  Expr *CxMatchCond = nullptr;
   if (ParseParenExprOrCondition(&InitStmt, Cond, SwitchLoc,
-                                Sema::ConditionKind::Switch, LParen, RParen))
+                                Sema::ConditionKind::Switch, LParen, RParen,
+                                &CxMatchCond))
     return StmtError();
+
+  // Cx: a switch on a Cx enum is pattern matching.
+  if (CxMatchCond) {
+    Sema::CxSwitchInfo Info;
+    bool IsCx = false;
+    StmtResult Switch = Actions.ActOnCxSwitchStart(SwitchLoc, LParen,
+                                                   CxMatchCond, RParen, Info,
+                                                   IsCx);
+    if (Switch.isInvalid()) {
+      if (Tok.is(tok::l_brace)) {
+        ConsumeBrace();
+        SkipUntil(tok::r_brace);
+      } else
+        SkipUntil(tok::semi);
+      return Switch;
+    }
+    getCurScope()->EnterSwitchBody(PrecedingLabel);
+    StmtResult Result = ParseCxSwitchBody(SwitchLoc, Switch.get(), Info);
+    SwitchScope.Exit();
+    return Result;
+  }
 
   StmtResult Switch = Actions.ActOnStartOfSwitchStmt(
       SwitchLoc, LParen, InitStmt.get(), Cond, RParen);
@@ -1753,6 +1794,168 @@ StmtResult Parser::ParseSwitchStatement(SourceLocation *TrailingElseLoc,
   SwitchScope.Exit();
 
   return Actions.ActOnFinishSwitchStmt(SwitchLoc, Switch.get(), Body.get());
+}
+
+StmtResult Parser::ParseCxSwitchBody(SourceLocation SwitchLoc, Stmt *Switch,
+                                     Sema::CxSwitchInfo &Info) {
+  if (Tok.isNot(tok::l_brace)) {
+    Diag(Tok, diag::err_expected_after) << "switch" << tok::l_brace;
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+  BalancedDelimiterTracker Braces(*this, tok::l_brace);
+  Braces.consumeOpen();
+  ParseScope BodyScope(this, Scope::DeclScope);
+  Actions.ActOnStartOfCompoundStmt(/*IsStmtExpr=*/false);
+
+  SmallVector<Stmt *, 16> Clauses;
+  while (!Tok.isOneOf(tok::r_brace, tok::eof)) {
+    SourceLocation LabelLoc = Tok.getLocation();
+    bool IsDefault = Tok.is(tok::kw_default);
+    if (!IsDefault && Tok.isNot(tok::kw_case)) {
+      Diag(Tok, diag::err_cx_switch_expected_case);
+      ParseStatement();
+      continue;
+    }
+    ConsumeToken();
+
+    // The patterns: `.name` or `Type.name`, then the bindings of one of them.
+    struct Pattern {
+      ExprResult Value;
+      SourceLocation Loc;
+    };
+    SmallVector<Pattern, 2> Patterns;
+    EnumConstantDecl *BindCase = nullptr;
+    SmallVector<IdentifierInfo *, 4> Names;
+    SmallVector<SourceLocation, 4> NameLocs;
+    SourceLocation BindLParen;
+    bool Several = false;
+    if (!IsDefault) {
+      do {
+        EnumDecl *Qualifier = nullptr;
+        SourceLocation PatternLoc = Tok.getLocation();
+        if (Tok.is(tok::period) && NextToken().is(tok::identifier)) {
+          ConsumeToken();
+        } else if (Tok.is(tok::identifier) && NextToken().is(tok::period) &&
+                   GetLookAheadToken(2).is(tok::identifier) &&
+                   (Qualifier = Actions.getCxEnumQualifier(
+                        Tok.getIdentifierInfo(), Tok.getLocation(),
+                        getCurScope()))) {
+          ConsumeToken();
+          ConsumeToken();
+        } else {
+          Diag(Tok, diag::err_cx_switch_pattern);
+          SkipUntil(tok::colon, StopAtSemi | StopBeforeMatch);
+          Patterns.clear();
+          break;
+        }
+        IdentifierInfo *Name = Tok.getIdentifierInfo();
+        SourceLocation NameLoc = ConsumeToken();
+        EnumConstantDecl *Case = nullptr;
+        ExprResult Value =
+            Actions.ActOnCxSwitchCase(Info, Qualifier, Name, NameLoc, Case);
+        if (Tok.is(tok::l_paren)) {
+          BalancedDelimiterTracker P(*this, tok::l_paren);
+          P.consumeOpen();
+          if (!BindLParen.isValid()) {
+            BindLParen = P.getOpenLocation();
+            BindCase = Case;
+          } else {
+            Several = true;
+          }
+          do {
+            if (Tok.isNot(tok::identifier)) {
+              Diag(Tok, diag::err_expected) << tok::identifier;
+              break;
+            }
+            IdentifierInfo *II = Tok.getIdentifierInfo();
+            Names.push_back(II->isStr("_") ? nullptr : II);
+            NameLocs.push_back(ConsumeToken());
+          } while (TryConsumeToken(tok::comma));
+          P.consumeClose();
+        }
+        Patterns.push_back({Value, PatternLoc});
+      } while (TryConsumeToken(tok::comma));
+      if (BindLParen.isValid() && (Several || Patterns.size() > 1)) {
+        Diag(BindLParen, diag::err_cx_switch_bind_several);
+        BindCase = nullptr;
+      }
+    }
+    SourceLocation ColonLoc = Tok.getLocation();
+    if (!TryConsumeToken(tok::colon, ColonLoc))
+      Diag(Tok, diag::err_expected) << tok::colon;
+
+    // The body: its own scope, with the bindings first and an implicit break
+    // last, so no case falls into the next.
+    ParseScope CaseScope(this, Scope::DeclScope);
+    Actions.ActOnStartOfCompoundStmt(/*IsStmtExpr=*/false);
+    StmtVector Stmts;
+    if (BindCase) {
+      StmtResult Bindings = Actions.ActOnCxSwitchBindings(
+          Info, BindCase, Names, NameLocs, BindLParen);
+      if (Bindings.isUsable())
+        Stmts.push_back(Bindings.get());
+    }
+    size_t UserStmts = Stmts.size();
+    while (!Tok.isOneOf(tok::kw_case, tok::kw_default, tok::r_brace,
+                        tok::eof)) {
+      StmtResult R =
+          ParseStatementOrDeclaration(Stmts, ParsedStmtContext::Compound);
+      if (R.isUsable())
+        Stmts.push_back(R.get());
+    }
+    if (Stmts.size() == UserStmts && !IsDefault &&
+        Tok.isOneOf(tok::kw_case, tok::kw_default))
+      Diag(ColonLoc, diag::err_cx_switch_empty_case)
+          << FixItHint::CreateReplacement(
+                 CharSourceRange::getTokenRange(ColonLoc, Tok.getLocation()),
+                 ",");
+    StmtResult Break = Actions.ActOnBreakStmt(SourceLocation(), getCurScope(),
+                                              nullptr, SourceLocation());
+    if (Break.isUsable())
+      Stmts.push_back(Break.get());
+    StmtResult Body = Actions.ActOnCompoundStmt(ColonLoc, PrevTokLocation,
+                                                Stmts, /*isStmtExpr=*/false);
+    Actions.ActOnFinishOfCompoundStmt();
+    CaseScope.Exit();
+    if (Body.isInvalid())
+      continue;
+
+    // The labels, chained as C chains `case A: case B:`.
+    if (IsDefault) {
+      Info.DefaultLoc = LabelLoc;
+      StmtResult Default = Actions.ActOnDefaultStmt(LabelLoc, ColonLoc,
+                                                    Body.get(), getCurScope());
+      if (Default.isUsable())
+        Clauses.push_back(Default.get());
+      continue;
+    }
+    Stmt *First = nullptr, *Last = nullptr;
+    for (Pattern &P : Patterns) {
+      if (P.Value.isInvalid())
+        continue;
+      StmtResult Case = Actions.ActOnCaseStmt(P.Loc, P.Value, SourceLocation(),
+                                              ExprResult(), ColonLoc);
+      if (Case.isInvalid())
+        continue;
+      if (Last)
+        Actions.ActOnCaseStmtBody(Last, Case.get());
+      else
+        First = Case.get();
+      Last = Case.get();
+    }
+    if (Last) {
+      Actions.ActOnCaseStmtBody(Last, Body.get());
+      Clauses.push_back(First);
+    }
+  }
+  SourceLocation LBrace = Braces.getOpenLocation();
+  Braces.consumeClose();
+  StmtResult Result = Actions.ActOnCxSwitchFinish(
+      SwitchLoc, Switch, Info, Clauses, LBrace, Braces.getCloseLocation());
+  Actions.ActOnFinishOfCompoundStmt();
+  BodyScope.Exit();
+  return Result;
 }
 
 StmtResult Parser::ParseWhileStatement(SourceLocation *TrailingElseLoc,

@@ -19,6 +19,7 @@
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Sema.h"
 #include "TypeLocBuilder.h"
 
@@ -2155,5 +2156,199 @@ bool Sema::diagnoseCxEnumCondition(const Expr *E) {
     return false;
   Diag(E->getExprLoc(), diag::err_cx_enum_condition)
       << E->getType().getUnqualifiedType() << E->getSourceRange();
+  return true;
+}
+
+/// `Base.Name`, reaching the implicit fields of Cx lowerings: this does not
+/// pass through the Cx member hook that hides them from source.
+static ExprResult buildCxFieldRef(Sema &S, Expr *Base, StringRef Name,
+                                  SourceLocation Loc) {
+  CXXScopeSpec SS;
+  return S.BuildMemberReferenceExpr(
+      Base, Base->getType(), Loc, /*IsArrow=*/false, SS, SourceLocation(),
+      nullptr, DeclarationNameInfo(&S.Context.Idents.get(Name), Loc), nullptr,
+      nullptr);
+}
+
+StmtResult Sema::ActOnCxSwitchStart(SourceLocation SwitchLoc,
+                                    SourceLocation LParen, Expr *Cond,
+                                    SourceLocation RParen, CxSwitchInfo &Info,
+                                    bool &IsCx) {
+  EnumDecl *ED = getCxEnum(Cond->getType());
+  IsCx = ED != nullptr;
+  if (!ED)
+    return StmtError();
+  Info.Enum = ED;
+  // The condition is evaluated once, into a variable no source can name, held
+  // by the switch's init-statement.
+  QualType T = Cond->getType().getUnqualifiedType();
+  auto *Match = VarDecl::Create(Context, CurContext, LParen, LParen,
+                                /*Id=*/nullptr, T,
+                                Context.getTrivialTypeSourceInfo(T, LParen),
+                                SC_None);
+  Match->setImplicit();
+  Match->setReferenced();
+  Match->addAttr(CxMatchAttr::CreateImplicit(Context));
+  CurContext->addHiddenDecl(Match);
+  AddInitializerToDecl(Match, Cond, /*DirectInit=*/false);
+  if (Match->isInvalidDecl())
+    return StmtError();
+  Info.Match = Match;
+  StmtResult Init =
+      ActOnDeclStmt(ConvertDeclToDeclGroup(Match), LParen, RParen);
+
+  // The switch tests the tag, as its backing integer, so C's integer cases
+  // apply.
+  ExprResult Tag = BuildDeclRefExpr(Match, T, VK_LValue, LParen);
+  if (isCxPayloadEnum(ED))
+    Tag = buildCxFieldRef(*this, Tag.get(), "$tag", LParen);
+  if (Tag.isInvalid())
+    return StmtError();
+  Tag = DefaultLvalueConversion(Tag.get());
+  if (Tag.isInvalid())
+    return StmtError();
+  Tag = ImpCastExprToType(Tag.get(), ED->getIntegerType(), CK_IntegralCast);
+  ConditionResult C = ActOnCondition(getCurScope(), SwitchLoc, Tag.get(),
+                                     ConditionKind::Switch);
+  if (C.isInvalid())
+    return StmtError();
+  return ActOnStartOfSwitchStmt(SwitchLoc, LParen, Init.get(), C, RParen);
+}
+
+ExprResult Sema::ActOnCxSwitchCase(CxSwitchInfo &Info, EnumDecl *Qualifier,
+                                   IdentifierInfo *Name, SourceLocation NameLoc,
+                                   EnumConstantDecl *&Case) {
+  Case = nullptr;
+  QualType EnumTy = Context.getCanonicalTagType(Info.Enum);
+  if (Qualifier && Qualifier->getCanonicalDecl() !=
+                       Info.Enum->getCanonicalDecl()) {
+    Diag(NameLoc, diag::err_cx_switch_wrong_enum) << Name << EnumTy;
+    return ExprError();
+  }
+  EnumConstantDecl *ECD = lookupCxEnumCase(*this, Info.Enum, Name, NameLoc);
+  if (!ECD)
+    return ExprError();
+  auto [It, New] = Info.Seen.insert({ECD, NameLoc});
+  if (!New) {
+    Diag(NameLoc, diag::err_cx_switch_duplicate) << Name;
+    Diag(It->second, diag::note_cx_switch_previous);
+    return ExprError();
+  }
+  Case = ECD;
+  QualType IntTy = Info.Enum->getIntegerType();
+  llvm::APInt Value = ECD->getInitVal().extOrTrunc(Context.getIntWidth(IntTy));
+  return ActOnCaseExpr(NameLoc,
+                       IntegerLiteral::Create(Context, Value, IntTy, NameLoc));
+}
+
+StmtResult Sema::ActOnCxSwitchBindings(CxSwitchInfo &Info,
+                                       EnumConstantDecl *Case,
+                                       ArrayRef<IdentifierInfo *> Names,
+                                       ArrayRef<SourceLocation> Locs,
+                                       SourceLocation LParen) {
+  const auto *A = Case->getAttr<CxEnumPayloadAttr>();
+  if (!A) {
+    Diag(LParen, diag::err_cx_switch_bind_no_payload) << Case;
+    return StmtError();
+  }
+  unsigned Count = A->labels_size();
+  if (Names.size() != Count) {
+    Diag(LParen, diag::err_cx_switch_bind_count)
+        << Case << Count << unsigned(Names.size());
+    return StmtError();
+  }
+  // Each name is a const copy of its element of the active payload.
+  ExprResult Payload =
+      BuildDeclRefExpr(Info.Match, Info.Match->getType(), VK_LValue, LParen);
+  Payload = buildCxFieldRef(*this, Payload.get(), "$payload", LParen);
+  if (Payload.isInvalid())
+    return StmtError();
+  Payload = buildCxFieldRef(*this, Payload.get(), Case->getName(), LParen);
+  if (Payload.isInvalid())
+    return StmtError();
+  SmallVector<Decl *, 4> Decls;
+  for (unsigned I = 0; I != Count; ++I) {
+    if (!Names[I])
+      continue; // `_` discards the element.
+    if (llvm::is_contained(ArrayRef(Names).take_front(I), Names[I])) {
+      Diag(Locs[I], diag::err_redefinition) << Names[I];
+      continue;
+    }
+    ExprResult Elem = Count == 1 ? Payload
+                                 : buildCxFieldRef(*this, Payload.get(),
+                                                   "$" + std::to_string(I),
+                                                   Locs[I]);
+    if (Elem.isInvalid())
+      continue;
+    QualType ET = Elem.get()->getType().getUnqualifiedType();
+    ET.addConst();
+    auto *VD = VarDecl::Create(Context, CurContext, Locs[I], Locs[I], Names[I],
+                               ET, Context.getTrivialTypeSourceInfo(ET, Locs[I]),
+                               SC_None);
+    VD->addAttr(CxPatternBindingAttr::CreateImplicit(Context, I));
+    PushOnScopeChains(VD, getCurScope());
+    AddInitializerToDecl(VD, Elem.get(), /*DirectInit=*/false);
+    Decls.push_back(VD);
+  }
+  if (Decls.empty())
+    return StmtEmpty();
+  return ActOnDeclStmt(BuildDeclaratorGroup(Decls), LParen, LParen);
+}
+
+StmtResult Sema::ActOnCxSwitchFinish(SourceLocation SwitchLoc, Stmt *Switch,
+                                     CxSwitchInfo &Info,
+                                     SmallVectorImpl<Stmt *> &Clauses,
+                                     SourceLocation LBrace,
+                                     SourceLocation RBrace) {
+  QualType EnumTy = Context.getCanonicalTagType(Info.Enum);
+  std::string Missing;
+  unsigned NumMissing = 0;
+  for (EnumConstantDecl *ECD : Info.Enum->enumerators())
+    if (!Info.Seen.count(ECD)) {
+      Missing += (NumMissing++ ? ", '" : "'") + ECD->getName().str() + "'";
+    }
+  if (Info.DefaultLoc.isValid()) {
+    if (!NumMissing)
+      Diag(Info.DefaultLoc, diag::warn_cx_switch_default_unreachable) << EnumTy;
+  } else {
+    if (NumMissing)
+      Diag(SwitchLoc, diag::err_cx_switch_missing)
+          << EnumTy << Missing << NumMissing;
+    // A value that matches no case, which only memory reinterpretation can
+    // make, stops the program. The default has no location, so printers and
+    // tools know it is implicit.
+    UnqualifiedId Name;
+    Name.setIdentifier(&Context.Idents.get("__builtin_trap"), SwitchLoc);
+    CXXScopeSpec SS;
+    ExprResult Fn = ActOnIdExpression(TUScope, SS, SourceLocation(), Name,
+                                      /*HasTrailingLParen=*/true,
+                                      /*IsAddressOfOperand=*/false);
+    ExprResult Trap = Fn.isInvalid() ? ExprError()
+                                     : BuildCallExpr(TUScope, Fn.get(), SwitchLoc,
+                                                     {}, SwitchLoc);
+    if (Trap.isUsable()) {
+      StmtResult Default = ActOnDefaultStmt(SourceLocation(), SourceLocation(),
+                                            Trap.get(), getCurScope());
+      if (Default.isUsable())
+        Clauses.push_back(Default.get());
+    }
+  }
+  StmtResult Body = ActOnCompoundStmt(LBrace, RBrace, Clauses,
+                                      /*isStmtExpr=*/false);
+  return ActOnFinishSwitchStmt(SwitchLoc, Switch,
+                               Body.isInvalid() ? nullptr : Body.get());
+}
+
+bool Sema::isCxSwitch(const SwitchStmt *S) {
+  const auto *DS = S ? dyn_cast_or_null<DeclStmt>(S->getInit()) : nullptr;
+  return DS && DS->isSingleDecl() && DS->getSingleDecl()->hasAttr<CxMatchAttr>();
+}
+
+bool Sema::diagnoseCxNestedSwitchLabel(SourceLocation Loc) {
+  if (!getLangOpts().CX || getCurFunction() == nullptr ||
+      getCurFunction()->SwitchStack.empty() ||
+      !isCxSwitch(getCurFunction()->SwitchStack.back().getPointer()))
+    return false;
+  Diag(Loc, diag::err_cx_switch_nested_case);
   return true;
 }

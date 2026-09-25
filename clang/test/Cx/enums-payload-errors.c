@@ -16,6 +16,6 @@ void uses(Token t, int i) {
   (void)(t == .end);           // expected-error {{values of 'enum Token' cannot be compared with '=='; match them with switch}}
   (void)t.rawValue;            // expected-error {{'enum Token' has no 'rawValue'}}
   (void)t.$tag;                // expected-error {{'enum Token' has no member '$tag'}}
-  switch (t) { default: ; }    // expected-error {{a switch on 'enum Token' needs Cx pattern matching}}
+  switch (t) { default: ; }  // pattern matching (M6d)
   Token g = i;                 // expected-error {{incompatible}}
 }
