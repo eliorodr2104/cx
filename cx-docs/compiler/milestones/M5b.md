@@ -54,7 +54,7 @@ with `-Werror=cx-implicit-semicolon`.
 - **Line break.** The next token begins a line. For a macro, what counts is
   where it is invoked: a token inside an expansion never starts a line, so
   two statements from macros on one line still need a `;`.
-- **Closing brace.** `{ return x }` and `({ int t = f(); t })`.
+- **Closing brace.** `{ return x }`, `{ return }` and `({ int t = f(); t })`.
 - **End of file.** The last declaration may omit its `;`.
 - **Preprocessed output keeps the line breaks.** `-E` writes each token on
   its source line, so compiling the output gives the same code.

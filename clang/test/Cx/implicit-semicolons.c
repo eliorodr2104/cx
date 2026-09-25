@@ -59,6 +59,12 @@ int continued(int v) {
     compute() // warn-warning {{';' implied by the line break}}
 }
 
+/* A closing brace never starts a returned value. */
+void bare(int v) {
+  if (v) { return } // warn-warning {{';' implied by the closing brace}}
+  return // warn-warning {{';' implied by the line break}}
+}
+
 #ifndef CODEGEN
 /* `break` and `continue` take a label in C2y, so a name on the next line
    continues them; that reading wins, as every C reading does. */

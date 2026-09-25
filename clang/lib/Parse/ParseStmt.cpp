@@ -2673,7 +2673,8 @@ StmtResult Parser::ParseReturnStatement() {
   SourceLocation ReturnLoc = ConsumeToken();  // eat the 'return'.
 
   ExprResult R;
-  if (Tok.isNot(tok::semi)) {
+  // Cx: `}` never starts a returned value.
+  if (Tok.isNot(tok::semi) && !(getLangOpts().CX && Tok.is(tok::r_brace))) {
     if (!IsCoreturn)
       PreferredType.enterReturn(Actions, Tok.getLocation());
     // FIXME: Code completion for co_return.
