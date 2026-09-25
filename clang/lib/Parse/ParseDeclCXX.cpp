@@ -1447,6 +1447,17 @@ bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
   // function type are still read as C (see isCxTupleTypeStart).
   if (isCxTupleTypeStart(/*AfterSpecifiers=*/true))
     return false;
+  // Cx: so does a line that begins with a type name followed by a declarator,
+  // `struct S {...}\nT x` or `T *p`: C would read T as the declarator and
+  // then reject what follows. `T;`, `T(int)`, `T = 1` and `T[2]` stay C.
+  if (getLangOpts().CX && Tok.is(tok::identifier) && Tok.isAtStartOfLine() &&
+      NextToken().isOneOf(tok::identifier, tok::star, tok::kw_const,
+                          tok::kw_volatile, tok::kw_restrict)) {
+    const IdentifierInfo &II = *Tok.getIdentifierInfo();
+    if (Actions.getTypeName(II, Tok.getLocation(), getCurScope()) ||
+        Actions.getCxImplicitTagType(II, Tok.getLocation(), getCurScope()))
+      return false;
+  }
 
   // This switch enumerates the valid "follow" set for type-specifiers.
   switch (Tok.getKind()) {
