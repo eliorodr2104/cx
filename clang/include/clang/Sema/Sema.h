@@ -4402,6 +4402,10 @@ public:
   /// Cx: the Cx enum type argument \p Index of a call to \p Callee expects,
   /// when every function \p Callee may name agrees; null otherwise.
   QualType getCxCaseArgumentType(Expr *Callee, unsigned Index);
+  /// The types of the elements of case \p Name's payload, in order; empty
+  /// when it has none or there is no such case.
+  SmallVector<QualType, 4> getCxPayloadElementTypes(EnumDecl *ED,
+                                                    IdentifierInfo *Name);
 
   /// Cx: the type element \p Index of a braced list or tuple literal
   /// initializing \p T takes: an array's element, a struct's or tuple's

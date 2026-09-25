@@ -119,6 +119,6 @@ Every C/GNU standard, as in M0.
 
 - **No recursion by value**, no managed payload types (M7), no generic payload
   enums (M9), no `==` (M8).
-- **Payload arguments have no expected type**: `.wrap(.red)` needs
-  `.wrap(Color.red)`.
+- ~~**Payload arguments have no expected type**: `.wrap(.red)` needs
+  `.wrap(Color.red)`.~~ Closed by [M6.2](M6.2.md).
 - **Matching** is M6d; until then a payload is written but not read.

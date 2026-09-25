@@ -6177,7 +6177,8 @@ bool Parser::ParseCxLabeledArguments(
     SmallVectorImpl<Expr *> &Args,
     SmallVectorImpl<const IdentifierInfo *> &Labels,
     SmallVectorImpl<SourceLocation> &LabelLocs, SourceLocation &LParen,
-    SourceLocation &RParen, QualType ExpectedCase) {
+    SourceLocation &RParen, QualType ExpectedCase,
+    ArrayRef<QualType> ExpectedAt) {
   BalancedDelimiterTracker T(*this, tok::l_paren);
   if (T.consumeOpen())
     return false;
@@ -6192,12 +6193,19 @@ bool Parser::ParseCxLabeledArguments(
           } else {
             Labels.push_back(nullptr);
           }
-          CxCaseType = ExpectedCase;
+          // Each argument that has a known destination takes its type, as a
+          // payload element does.
+          if (Args.size() < ExpectedAt.size())
+            prepareCxElement(ExpectedAt[Args.size()]);
+          else
+            CxCaseType = ExpectedCase;
         })) {
       SkipUntil(tok::r_paren, StopAtSemi);
       return false;
     }
   }
+  CxBraceType = CxTupleType = QualType();
+  CxTupleContext = false;
   RParen = Tok.getLocation();
   if (T.consumeClose())
     return false;

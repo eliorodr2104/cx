@@ -2126,6 +2126,25 @@ static EnumConstantDecl *lookupCxEnumCase(Sema &S, EnumDecl *ED,
   return nullptr;
 }
 
+SmallVector<QualType, 4> Sema::getCxPayloadElementTypes(EnumDecl *ED,
+                                                      IdentifierInfo *Name) {
+  SmallVector<QualType, 4> Types;
+  for (NamedDecl *D : ED->lookup(Name)) {
+    const auto *ECD = dyn_cast<EnumConstantDecl>(D);
+    const auto *A = ECD ? ECD->getAttr<CxEnumPayloadAttr>() : nullptr;
+    if (!A)
+      continue;
+    if (A->labels_size() == 1) {
+      Types.push_back(A->getPayload());
+    } else if (const RecordDecl *RD = A->getPayload()->getAsRecordDecl()) {
+      for (const FieldDecl *FD : RD->fields())
+        Types.push_back(FD->getType());
+    }
+    break;
+  }
+  return Types;
+}
+
 /// A value of payload enum \p ED holding case \p ECD: `(Token){ tag,
 /// .$payload.case = Payload }`, or only the tag when \p Payload is null.
 static ExprResult buildCxEnumValue(Sema &S, EnumDecl *ED, EnumConstantDecl *ECD,

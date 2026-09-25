@@ -785,7 +785,10 @@ ExprResult Parser::ParseCxEnumCaseSuffix(EnumDecl *ED, IdentifierInfo *Case,
   SmallVector<const IdentifierInfo *, 4> Labels;
   SmallVector<SourceLocation, 4> LabelLocs;
   SourceLocation LParen, RParen;
-  if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParen, RParen))
+  // Payload elements are destinations, so `.wrap(.red)` finds its enum.
+  SmallVector<QualType, 4> Elements = Actions.getCxPayloadElementTypes(ED, Case);
+  if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParen, RParen,
+                               QualType(), Elements))
     return ExprError();
   return Actions.ActOnCxEnumCaseCall(ED, Case, CaseLoc, LParen, Labels,
                                      LabelLocs, Args, RParen);

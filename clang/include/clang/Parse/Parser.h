@@ -2190,7 +2190,8 @@ private:
                                SmallVectorImpl<const IdentifierInfo *> &Labels,
                                SmallVectorImpl<SourceLocation> &LabelLocs,
                                SourceLocation &LParen, SourceLocation &RParen,
-                               QualType ExpectedCase = QualType());
+                               QualType ExpectedCase = QualType(),
+                               ArrayRef<QualType> ExpectedAt = {});
 
   /// Cx: `[a, b]` or `[]`, a literal of option set \p Expected.
   ExprResult ParseCxOptionSetLiteral(QualType Expected);

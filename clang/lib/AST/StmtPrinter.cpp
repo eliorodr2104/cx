@@ -2102,11 +2102,20 @@ void StmtPrinter::VisitCompoundLiteralExpr(CompoundLiteralExpr *Node) {
         if (auto *DIE = dyn_cast<DesignatedInitExpr>(List->getInit(1))) {
           Expr *Payload = DIE->getInit()->IgnoreImpCasts();
           OS << '(';
-          // A tuple payload prints its elements.
+          // A payload of several elements, held as a tuple, prints its
+          // elements; one element that is itself a tuple prints as one.
+          unsigned Count = 0;
+          const EnumDecl *ED =
+              RT->getDecl()->getAttr<CxPayloadEnumAttr>()->getPayloadEnum();
+          if (const IdentifierInfo *Case =
+                  DIE->designators().back().getFieldName())
+            for (const NamedDecl *D : ED->lookup(Case))
+              if (const auto *A = D->getAttr<CxEnumPayloadAttr>())
+                Count = A->labels_size();
           auto *Lit = dyn_cast<CompoundLiteralExpr>(Payload);
           auto *Elems =
               Lit ? dyn_cast<InitListExpr>(Lit->getInitializer()) : nullptr;
-          if (Elems && Lit->getType()->getAsRecordDecl() &&
+          if (Count != 1 && Elems && Lit->getType()->getAsRecordDecl() &&
               Lit->getType()->getAsRecordDecl()->hasAttr<CxTupleAttr>()) {
             if (Elems->getSyntacticForm())
               Elems = Elems->getSyntacticForm();
