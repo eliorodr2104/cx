@@ -2211,8 +2211,10 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
 
     // The _Noreturn keyword can't appear here, unlike the GNU noreturn
     // attribute. If we find the keyword here, tell the user to put it
-    // at the start instead.
-    if (Tok.is(tok::kw__Noreturn)) {
+    // at the start instead. Cx: at the start of a line it starts the next
+    // declaration, which C never reads here.
+    if (Tok.is(tok::kw__Noreturn) &&
+        !(getLangOpts().CX && Tok.isAtStartOfLine())) {
       SourceLocation Loc = ConsumeToken();
       const char *PrevSpec;
       unsigned DiagID;
@@ -3346,8 +3348,11 @@ Parser::DiagnoseMissingSemiAfterTagDefinition(DeclSpec &DS, AccessSpecifier AS,
 
     // These tokens cannot come after the declarator-id in a
     // simple-declaration, and are likely to come after a type-specifier.
+    // Cx: on the next line they start the next declaration, after the
+    // declarator of `typedef struct S {...} S`.
     if (Next.isOneOf(tok::star, tok::amp, tok::ampamp, tok::identifier,
-                     tok::annot_cxxscope, tok::coloncolon)) {
+                     tok::annot_cxxscope, tok::coloncolon) &&
+        !(getLangOpts().CX && Next.isAtStartOfLine())) {
       // Missing a semicolon.
       MightBeDeclarator = false;
     } else if (HasScope) {
@@ -4852,8 +4857,22 @@ void Parser::ParseStructDeclaration(
   ParseSpecifierQualifierList(DS);
 
   // If there are no declarators, this is a free-standing declaration
-  // specifier. Let the actions module cope with it.
-  if (Tok.is(tok::semi)) {
+  // specifier. Let the actions module cope with it. Cx: so is one that ends
+  // at a closing brace, or at a line break before a token that cannot start
+  // a field's declarator, such as a method's `init(` after a struct or
+  // union; C reads none of these.
+  bool CxEnds = false;
+  if (getLangOpts().CX) {
+    bool Record = DS.getTypeSpecType() == DeclSpec::TST_struct ||
+                  DS.getTypeSpecType() == DeclSpec::TST_union;
+    CxEnds = Tok.is(tok::r_brace) ||
+             (Tok.isAtStartOfLine() &&
+              (!Tok.isOneOf(tok::identifier, tok::star, tok::caret,
+                            tok::l_paren, tok::l_square, tok::colon) ||
+               (Record && Tok.is(tok::identifier) &&
+                NextToken().is(tok::l_paren))));
+  }
+  if (Tok.is(tok::semi) || CxEnds) {
     // C23 6.7.2.1p9 : "The optional attribute specifier sequence in a
     // member declaration appertains to each of the members declared by the
     // member declarator list; it shall not appear if the optional member

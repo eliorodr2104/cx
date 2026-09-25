@@ -14,7 +14,8 @@
 #module Semis
 
 int compute(void);
-void effect(int v);
+void effect(int v) // warn-warning {{';' implied by the line break}}
+_Noreturn void stop(void);
 
 struct Point {
   int x // warn-warning {{';' implied by the line break}}
@@ -23,6 +24,14 @@ struct Point {
 } // warn-warning {{';' implied by the line break}}
 
 typedef struct Point Pt // warn-warning {{';' implied by the line break}}
+typedef struct Frame { int count; } Frame // warn-warning {{';' implied by the line break}}
+Frame firstFrame // warn-warning {{';' implied by the line break}}
+Pt *lastPoint // warn-warning {{';' implied by the line break}}
+struct Holder {
+  int kind // warn-warning {{';' implied by the line break}}
+  union { int i; float f; } // warn-warning {{';' implied by the line break}}
+  struct { int lo; int hi; } // warn-warning {{';' implied by the line break}}
+} // warn-warning {{';' implied by the line break}}
 enum Mode { Fast, Slow } // warn-warning {{';' implied by the line break}}
 
 int statements(int n) {

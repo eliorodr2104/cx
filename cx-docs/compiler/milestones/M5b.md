@@ -145,5 +145,8 @@ failed, 0 unexpected failures, with `Index/crash-recovery-modules.m` excluded
 - **A line that begins with `(`, `[`, `-`, `*` or `&` continues the one
   before it** wherever C can read it so. Write the `;` to end the previous
   statement, as the specification's escape hatch says.
+- **Error recovery skips to the next `;`.** After an error inside an
+  initializer the parser skips tokens until a `;`, which without semicolons
+  can be the end of the function.
 - **Trailing closures**, which interact with the boundary before `{`, are
   M12.
