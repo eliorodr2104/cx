@@ -120,11 +120,11 @@ int early(int stop) {
 // PRINT: p->deinit()
 void heap(void) {
   File *p = malloc(2 * sizeof(File))
-  p->init(5);
+  p->init(5)
   (p + 1)->init(6)
   Holder *h = malloc(sizeof(Holder))
   h->init(file: File(7), count: 1)
-  h->deinit();
+  h->deinit()
   (p + 1)->deinit()
   p->deinit()
   free(h)

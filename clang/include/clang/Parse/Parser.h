@@ -7793,6 +7793,12 @@ public:
   StmtResult ParseDeferStatement(SourceLocation *TrailingElseLoc);
   bool isCxDeferStatement(const Token &Next);
   bool isCxDeferBlockStart();
+  /// Cx: whether the postfix suffix at the start of this line begins the next
+  /// statement instead of continuing \p LHS, which C could not do.
+  bool isCxLineBoundaryBeforeSuffix(ExprResult LHS);
+  /// Cx: whether the binary operator at the start of this line begins the
+  /// next statement, because C could not continue with it.
+  bool isCxLineBoundaryBeforeOperator();
 
   /// ParseExpansionStatement - Parse a C++26 expansion
   /// statement ('template for').

@@ -32,7 +32,11 @@ return
     compute();
 ```
 
-The first remains one call and the second returns `compute()`'s result. C `for`
+The first remains one call and the second returns `compute()`'s result. Where C
+cannot validly continue, the line break ends the statement: after a value that
+cannot be called or indexed, a line beginning with `(` or `[` starts a new
+statement, and so does a line beginning with `*`, `&`, `-` or `+` that assigns,
+such as `*p = 3`, or with `++`/`--` before an operand. C `for`
 headers keep explicit semicolon separators. An explicit semicolon is the escape
 hatch when the programmer wants a boundary that continuation rules would not infer.
 

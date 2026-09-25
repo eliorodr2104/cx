@@ -140,11 +140,11 @@ failed, 0 unexpected failures, with `Index/crash-recovery-modules.m` excluded
 
 - **No restricted productions.** Unlike JavaScript, `return` followed by a
   line break does not end the statement, because the specification requires
-  `return\n compute()` to return the value. The same goes for `++` and `--`:
-  `a\n++b` is C's `a++ b`, an error, not two statements.
-- **A line that begins with `(`, `[`, `-`, `*` or `&` continues the one
-  before it** wherever C can read it so. Write the `;` to end the previous
-  statement, as the specification's escape hatch says.
+  `return\n compute()` to return the value. (`a\n++b` is two statements since
+  [M5.1](M5.1.md).)
+- ~~**A line that begins with `(`, `[`, `-`, `*` or `&` continues the one
+  before it** wherever C can read it so.~~ Narrowed by [M5.1](M5.1.md): it
+  continues only where C can validly continue.
 - **Error recovery skips to the next `;`.** After an error inside an
   initializer the parser skips tokens until a `;`, which without semicolons
   can be the end of the function.

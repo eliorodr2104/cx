@@ -329,6 +329,11 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     if (NextTokPrec < MinPrec)
       return LHS;
 
+    // Cx: `*p = 3` on a new line is a statement of its own; C reads no
+    // continuation there.
+    if (isCxLineBoundaryBeforeOperator())
+      return LHS;
+
     // Consume the operator, saving the operator token for error reporting.
     Token OpToken = Tok;
     ConsumeToken();
@@ -771,8 +776,10 @@ ExprResult Parser::ParseBuiltinPtrauthTypeDiscriminator() {
 
 ExprResult Parser::ParseCxEnumCaseSuffix(EnumDecl *ED, IdentifierInfo *Case,
                                          SourceLocation CaseLoc) {
-  // `.location(10, 4)`: a case of a payload enum with its payload.
-  if (Tok.isNot(tok::l_paren) || !Actions.isCxPayloadEnum(ED))
+  // `.location(10, 4)`: a case of a payload enum with its payload, which
+  // starts on the case's line.
+  if (Tok.isNot(tok::l_paren) || Tok.isAtStartOfLine() ||
+      !Actions.isCxPayloadEnum(ED))
     return Actions.ActOnCxEnumCase(ED, Case, CaseLoc);
   ExprVector Args;
   SmallVector<const IdentifierInfo *, 4> Labels;
@@ -1784,6 +1791,69 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
   return Res;
 }
 
+bool Parser::isCxLineBoundaryBeforeSuffix(ExprResult LHS) {
+  if (!getLangOpts().CX || !Tok.isAtStartOfLine() || !LHS.isUsable())
+    return false;
+  const Expr *E = LHS.get();
+  QualType T = E->getType();
+  // Whatever C could not type-check is left to C's reading, which diagnoses
+  // it, rather than guessed at.
+  if (T.isNull() || T->isDependentType() || E->containsErrors() ||
+      T->isPlaceholderType())
+    return false;
+  switch (Tok.getKind()) {
+  case tok::l_paren:
+    // `foo\n(bar)` stays a call, as in C; nothing else can be called.
+    return !T->isFunctionType() && !T->isFunctionPointerType() &&
+           !T->isBlockPointerType();
+  case tok::l_square:
+    // `a\n[i]` stays a subscript, as in C, and so does `i\n[a]`.
+    return !T->isPointerType() && !T->isArrayType() &&
+           !T->isIntegralOrUnscopedEnumerationType() && !T->isVectorType() &&
+           !T->isMatrixType();
+  case tok::plusplus:
+  case tok::minusminus: {
+    // `a\n++b` is C's `a++ b`, an error; `a\n++ - b` stays `a++ - b`.
+    const Token &Next = NextToken();
+    return Next.isOneOf(tok::identifier, tok::numeric_constant, tok::l_paren,
+                        tok::char_constant) &&
+           !Next.isAtStartOfLine();
+  }
+  default:
+    return false;
+  }
+}
+
+bool Parser::isCxLineBoundaryBeforeOperator() {
+  if (!getLangOpts().CX || !Tok.isAtStartOfLine() ||
+      !Tok.isOneOf(tok::star, tok::amp, tok::minus, tok::plus))
+    return false;
+  // `x = a\n- b` stays a subtraction, as in C. The result of a binary `*`,
+  // `&`, `-` or `+` can never be assigned, so when this line assigns, C has
+  // no continuation, and the operator is the prefix of a new statement:
+  // `*p = 3`, `*p++ = v`, `-x += 1`.
+  int Depth = 0;
+  for (unsigned I = 1; I != 256; ++I) {
+    const Token &T = GetLookAheadToken(I);
+    if (T.isOneOf(tok::eof, tok::semi) || T.isAtStartOfLine())
+      return false;
+    if (T.isOneOf(tok::l_paren, tok::l_square, tok::l_brace)) {
+      ++Depth;
+      continue;
+    }
+    if (T.isOneOf(tok::r_paren, tok::r_square, tok::r_brace)) {
+      if (--Depth < 0)
+        return false;
+      continue;
+    }
+    if (Depth == 0 &&
+        getBinOpPrecedence(T.getKind(), GreaterThanIsOperator,
+                           getLangOpts().CPlusPlus11) == prec::Assignment)
+      return true;
+  }
+  return false;
+}
+
 ExprResult
 Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
   // Now that the primary-expression piece of the postfix-expression has been
@@ -1803,6 +1873,15 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
           getCurScope(), LHS, PreferredType.get(Tok.getLocation()));
       return ExprError();
 
+    case tok::l_square:
+    case tok::l_paren:
+    case tok::lesslessless:
+    case tok::arrow:
+    case tok::period:
+    case tok::plusplus:
+    case tok::minusminus:
+      break;
+
     case tok::identifier:
       // If we see identifier: after an expression, and we're not already in a
       // message send, then this is probably a message send with a missing
@@ -1811,13 +1890,23 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
           (NextToken().is(tok::colon) || NextToken().is(tok::r_square))) {
         LHS = ParseObjCMessageExpressionBody(SourceLocation(), SourceLocation(),
                                              nullptr, LHS.get());
-        break;
+        continue;
       }
       // Fall through; this isn't a message send.
       [[fallthrough]];
 
     default:  // Not a postfix-expression suffix.
       return LHS;
+    }
+
+    // Cx: `(`, `[`, `++` or `--` at the start of a line begins the next
+    // statement wherever C could not continue this expression with it.
+    if (isCxLineBoundaryBeforeSuffix(LHS))
+      return LHS;
+
+    switch (Tok.getKind()) {
+    default:
+      llvm_unreachable("not a postfix-expression suffix");
     case tok::l_square: {  // postfix-expression: p-e '[' expression ']'
       // If we have a array postfix expression that starts on a new line and
       // Objective-C is enabled, it is highly likely that the user forgot a
@@ -2235,10 +2324,14 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         SourceLocation LParen, RParen;
         if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParen, RParen))
           LHS = ExprError();
-        else
+        else if (Delegation)
           LHS = Actions.ActOnCxInitDelegation(LHS.get(), Name.StartLocation,
                                               LParen, Labels, LabelLocs, Args,
                                               RParen);
+        else
+          LHS = Actions.ActOnCxInitInPlace(LHS.get(), Name.StartLocation,
+                                           LParen, Labels, LabelLocs, Args,
+                                           RParen);
         break;
       }
 
@@ -2255,7 +2348,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParen, RParen,
                                      SetTy))
           LHS = ExprError();
-        else if (Delegation)
+        else
           LHS = Actions.BuildCxOptionSetMethod(LHS.get(), Name.Identifier,
                                                Name.StartLocation, Labels,
                                                Args, RParen);
@@ -2328,10 +2421,6 @@ Parser::ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
                diag::err_expected_parentheses_around_typename)
               << OpTok.getName();
         } else {
-        else
-          LHS = Actions.ActOnCxInitInPlace(LHS.get(), Name.StartLocation,
-                                           LParen, Labels, LabelLocs, Args,
-                                           RParen);
           Diag(LParenLoc, diag::err_expected_parentheses_around_typename)
               << OpTok.getName() << FixItHint::CreateInsertion(LParenLoc, "(")
               << FixItHint::CreateInsertion(RParenLoc, ")");
