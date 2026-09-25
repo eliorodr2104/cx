@@ -71,3 +71,10 @@ C function pointer selects the C-compatible entry, not the native throwing one.
 
 Cross-language tests compile an actual C consumer separately and link it with the
 Cx-produced bridge. All ABI adapters are versioned before public stability.
+
+## Resource types
+
+A C caller could copy a struct with a `deinit`, or leave it without calling it. A
+resource type is therefore exported as an opaque type reached only through pointers,
+with generated functions to construct and destroy it.
+

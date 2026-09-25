@@ -9297,6 +9297,14 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
 }
 
 bool Sema::CheckVariableDeclaration(VarDecl *NewVD, LookupResult &Previous) {
+  // Cx: C runs no destructor at program exit, so nothing would release a
+  // resource in static storage.
+  if (getLangOpts().CX && !isa<ParmVarDecl>(NewVD) &&
+      !NewVD->hasLocalStorage() &&
+      CheckCxResourceStorage(NewVD->getType(), NewVD->getLocation(), 0)) {
+    NewVD->setInvalidDecl();
+    return true;
+  }
   CheckVariableDeclarationType(NewVD);
 
   // If the decl is already known invalid, don't check it.
@@ -15025,6 +15033,9 @@ void Sema::addLifetimeBoundToImplicitThis(CXXMethodDecl *MD) {
 void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
   if (var->isInvalidDecl()) return;
 
+  CheckCxResourceVar(var);
+  if (var->isInvalidDecl()) return;
+
   CUDA().MaybeAddConstantAttr(var);
 
   if (getLangOpts().OpenCL) {
@@ -16008,6 +16019,9 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                                   SourceLocation NameLoc,
                                   const IdentifierInfo *Name, QualType T,
                                   TypeSourceInfo *TSInfo, StorageClass SC) {
+  // Cx: a parameter would hold a copy of its argument.
+  CheckCxResourceStorage(T, NameLoc.isValid() ? NameLoc : StartLoc, 2);
+
   // In ARC, infer a lifetime qualifier for appropriate parameter types.
   if (getLangOpts().ObjCAutoRefCount &&
       T.getObjCLifetime() == Qualifiers::OCL_None &&
@@ -20455,6 +20469,11 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
 
     if (!Completed)
       Record->completeDefinition();
+
+    // Cx: resource members of unions, and a deinit for the fields that need
+    // one.
+    if (getLangOpts().CX)
+      completeCxRecordValueOperations(Record);
 
     // Handle attributes before checking the layout.
     ProcessDeclAttributeList(S, Record, Attrs);

@@ -59,9 +59,9 @@ Managed fields are destroyed in reverse declaration order. A custom `deinit()` i
 a hook before automatic member destruction, not a replacement for that destruction.
 Raw pointers are copied as addresses and are not implicitly freed.
 
-Custom resource-owning structs with raw handles need an explicit copy policy before
-being made freely copyable; automatic copying must not invent `dup`, deep copy, or
-balanced manual-RC retains. See [G07](../OPEN-ISSUES.md#g07--ownership-and-failure-contracts).
+A struct with a `deinit` owns a resource and does not copy: automatic copying must
+not invent `dup`, deep copy, or balanced manual-RC retains. See
+[Resource types](initializers.md#resource-types-do-not-copy).
 
 ## Layout and visibility
 

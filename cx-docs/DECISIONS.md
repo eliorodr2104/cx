@@ -40,6 +40,7 @@ contracts that must be completed at a specific implementation milestone. Use the
 | Defer | Block only, reverse order per scope, value returned before cleanup; no jump into or past it | Accepted |
 | Definite initialization | Whole-field assignment on every path; `self.init` once on every path; no braces for a type with `init` | Accepted |
 | Deinit | Automatic member cleanup plus optional non-throwing user hook | Accepted |
+| Resource types | A type with a deinit does not copy; new values move; `p->init`/`p->deinit` for raw memory | Accepted; moves of locals M7.2 |
 | Classes | ARC by default; manual reference counting also supported | Accepted semantics; manual spelling pending |
 | Properties | Implicit stored access; getter-only shorthand; explicit get/set | Accepted |
 | Subscript/literals | Bracket API and collection literal support | Accepted direction; detailed rules gated |

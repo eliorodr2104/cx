@@ -2769,9 +2769,37 @@ def err_cx_init_self_use : Error<
 def err_cx_init_self_use_union : Error<
   "'self' is used before its anonymous union is initialized">;
 def err_cx_init_const_reassigned : Error<
-  "const field %0 may already be initialized here">;
+  "%select{const|resource}1 field %0 may already be initialized here">;
 def err_cx_init_defer_initializes : Error<
-  "a deferred block cannot %select{initialize|assign const}1 field %0">;
+  "a deferred block cannot %select{initialize|assign const|assign resource}1 "
+  "field %0">;
+def err_cx_deinit_signature : Error<
+  "a deinit takes no parameters and declares no return type">;
+def err_cx_deinit_mutating : Error<
+  "a deinit destroys its receiver, so it cannot be '~mutating'">;
+def err_cx_deinit_in_union : Error<"a union cannot declare a deinit">;
+def err_cx_deinit_in_continuation : Error<
+  "the deinit of %0 must be declared in its primary definition">;
+def err_cx_resource_in_union : Error<
+  "a union member cannot have type %0, which has a deinit">;
+def err_cx_resource_copy : Error<
+  "%0 has a deinit, so it cannot be copied">;
+def err_cx_resource_storage : Error<
+  "%select{a variable with static storage|a variable without an initializer|"
+  "a parameter|a variadic argument|a tuple element|an enum payload}0 cannot "
+  "hold %1, which has a deinit">;
+def err_cx_resource_member_of_new : Error<
+  "reading a field of a new %0 would never run its deinit; store it in a "
+  "variable first">;
+def err_cx_resource_left_out : Error<
+  "%select{field %1|every element}0 must be given explicitly, since %2 has a "
+  "deinit">;
+def err_cx_deinit_call : Error<
+  "%select{a deinit is called only through a pointer; a variable is destroyed "
+  "automatically|'self' cannot be destroyed inside its own method|"
+  "%1 has no deinit}0">;
+def err_cx_init_in_place_value : Error<
+  "'init' constructs in place only through a pointer">;
 def err_cx_delegation_outside_init : Error<
   "'self.init' can only be called in an initializer">;
 def err_cx_delegation_before : Error<
@@ -7269,6 +7297,10 @@ def note_protected_by_objc_weak_init : Note<
 def note_protected_by_non_trivial_c_struct_init : Note<
   "jump bypasses initialization of variable of non-trivial C struct type">;
 def note_protected_by_defer_stmt : Note<"jump bypasses defer statement">;
+def note_protected_by_cx_resource : Note<
+  "jump bypasses initialization of a variable with a deinit">;
+def note_exits_cx_resource : Note<
+  "jump exits scope of a variable with a deinit">;
 def note_enters_block_captures_cxx_obj : Note<
   "jump enters lifetime of block which captures a destructible C++ object">;
 def note_enters_block_captures_strong : Note<

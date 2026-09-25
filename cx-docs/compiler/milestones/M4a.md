@@ -125,7 +125,7 @@ failed, 0 unexpected failures.
   be computed at all.
 - ~~**No generated construction.**~~ Closed by [M4d](M4d.md):
   `Counter(value: 0)`.
-- **No `deinit`, no copy or destruction hooks.** Value operations are M7.
+- ~~**No `deinit`, no copy or destruction hooks.**~~ Supplied by [M7c](M7c.md).
 - **Methods on classes do not exist**, because classes do not exist yet (M11).
 - A method written `(void)` crashed the compiler as shipped here, and an
   unqualified name resolved against the receiver only for a field and not for

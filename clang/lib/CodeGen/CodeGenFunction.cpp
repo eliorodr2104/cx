@@ -1622,6 +1622,8 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
     EmitCall(FnInfo, GDStubCallee, ReturnValueSlot(), CallArgs, nullptr, false,
              Loc);
   } else if (Body) {
+    if (getLangOpts().CX)
+      EmitCxDeinitFieldCleanups(FD);
     EmitFunctionBody(Body);
   } else
     llvm_unreachable("no definition for emitted function");

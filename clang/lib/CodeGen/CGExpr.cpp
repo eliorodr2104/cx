@@ -257,6 +257,20 @@ llvm::Value *CodeGenFunction::EvaluateExprAsBool(const Expr *E) {
 /// EmitIgnoredExpr - Emit code to compute the specified expression,
 /// ignoring the result.
 void CodeGenFunction::EmitIgnoredExpr(const Expr *E) {
+  // Cx: a discarded new resource value is destroyed at once. An assignment's
+  // value is its target, which stays alive.
+  const auto *Assign = dyn_cast<BinaryOperator>(E->IgnoreParens());
+  if (E->isPRValue() && isCxResourceType(E->getType()) &&
+      !(Assign && Assign->isAssignmentOp())) {
+    Address Tmp = CreateMemTemp(E->getType(), "cx.discarded");
+    EmitAggExpr(E, AggValueSlot::forAddr(
+                       Tmp, Qualifiers(), AggValueSlot::IsDestructed,
+                       AggValueSlot::DoesNotNeedGCBarriers,
+                       AggValueSlot::IsNotAliased,
+                       AggValueSlot::DoesNotOverlap));
+    emitCxResourceDestroy(Tmp, E->getType());
+    return;
+  }
   if (E->isPRValue())
     return (void)EmitAnyExpr(E, AggValueSlot::ignored(), true);
 

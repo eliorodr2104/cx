@@ -35,6 +35,7 @@ ones.
 - [M6e: Option sets](M6e.md): **Completed**
 - [M7a: `defer`](M7a.md): **Completed**
 - [M7b: Definite initialization and delegation](M7b.md): **Completed**
+- [M7c: `deinit`, resource types and raw memory](M7c.md): **Completed**
 
 ## Hardening passes
 

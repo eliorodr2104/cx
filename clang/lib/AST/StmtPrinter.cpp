@@ -2214,7 +2214,67 @@ static const CallExpr *getCxConstructionCall(const StmtExpr *E) {
   return Call;
 }
 
+/// Cx: `p->init(...)`, lowered to `({ T *__cx_place = p; *__cx_place = T(...); })`.
+static const VarDecl *getCxPlace(const StmtExpr *E) {
+  const CompoundStmt *CS = E->getSubStmt();
+  if (CS->size() != 2)
+    return nullptr;
+  const auto *DS = dyn_cast<DeclStmt>(CS->body_front());
+  const auto *VD =
+      DS && DS->isSingleDecl() ? dyn_cast<VarDecl>(DS->getSingleDecl()) : nullptr;
+  const auto *Store = dyn_cast<Expr>(CS->body_back());
+  return VD && VD->isImplicit() && VD->getName() == "__cx_place" &&
+                 VD->getInit() && Store &&
+                 isa<BinaryOperator>(Store->IgnoreImpCasts())
+             ? VD
+             : nullptr;
+}
+
 void StmtPrinter::VisitStmtExpr(StmtExpr *E) {
+  if (const VarDecl *Place = getCxPlace(E)) {
+    const Expr *Ptr = Place->getInit()->IgnoreImpCasts();
+    bool Postfix = isa<DeclRefExpr, MemberExpr, ArraySubscriptExpr, CallExpr,
+                       ParenExpr>(Ptr);
+    if (!Postfix)
+      OS << "(";
+    PrintExpr(const_cast<Expr *>(Ptr));
+    if (!Postfix)
+      OS << ")";
+    const Expr *Value0 = cast<BinaryOperator>(cast<Expr>(E->getSubStmt()->body_back())
+                                                  ->IgnoreImpCasts())
+                             ->getRHS()
+                             ->IgnoreImpCasts();
+    // A generated construction is a compound literal of the fields, which
+    // `init` takes labelled by their names.
+    if (const auto *CL = dyn_cast<CompoundLiteralExpr>(Value0)) {
+      const auto *ILE = dyn_cast<InitListExpr>(CL->getInitializer());
+      const RecordDecl *RD = CL->getType()->getAsRecordDecl();
+      if (ILE && RD) {
+        OS << "->init(";
+        unsigned I = 0;
+        for (const FieldDecl *FD : RD->fields()) {
+          if (FD->isUnnamedBitField() || I == ILE->getNumInits())
+            continue;
+          if (I)
+            OS << ", ";
+          OS << FD->getName() << ": ";
+          PrintExpr(const_cast<Expr *>(ILE->getInit(I++)));
+        }
+        OS << ")";
+        return;
+      }
+    }
+    // The value is printed as its construction, `T(...)`; only the arguments
+    // follow `init`.
+    std::string Value;
+    llvm::raw_string_ostream VOS(Value);
+    cast<BinaryOperator>(cast<Expr>(E->getSubStmt()->body_back())
+                             ->IgnoreImpCasts())
+        ->getRHS()
+        ->printPretty(VOS, Helper, Policy, 0, NL, Context);
+    OS << "->init" << StringRef(Value).drop_until([](char C) { return C == '('; });
+    return;
+  }
   if (const CallExpr *Call = getCxConstructionCall(E)) {
     const FunctionDecl *FD = Call->getDirectCallee();
     E->getType().getUnqualifiedType().print(OS, Policy);

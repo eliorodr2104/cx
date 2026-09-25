@@ -2243,6 +2243,18 @@ public:
 
   typedef void Destroyer(CodeGenFunction &CGF, Address addr, QualType ty);
 
+  /// Cx: whether values of \p T have a deinit.
+  bool isCxResourceType(QualType T) const;
+  /// Cx: destroy the resource at \p Addr when the current scope ends.
+  bool pushCxResourceDestroy(Address Addr, QualType T);
+  /// Cx: destroy the resource at \p Addr now.
+  void emitCxResourceDestroy(Address Addr, QualType T);
+  /// Cx: a deinit destroys the fields that have one after its body.
+  void EmitCxDeinitFieldCleanups(const FunctionDecl *FD);
+  /// Cx: whether an assignment to \p LHS initializes storage that holds no
+  /// value yet, so nothing is destroyed first.
+  bool isCxRawResourceStore(const Expr *LHS) const;
+
   void pushIrregularPartialArrayCleanup(llvm::Value *arrayBegin,
                                         Address arrayEndPointer,
                                         QualType elementType,

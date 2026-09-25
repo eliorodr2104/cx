@@ -4,7 +4,8 @@ Cx separates value semantics, reference ownership, and raw addresses.
 
 ## Value types
 
-Structs, tuples, and payload enums copy values. Managed members participate in
+Structs, tuples, and payload enums copy values, except resource types, which have a
+`deinit` and one owner. Managed members participate in
 synthesized copy/destruction; raw C pointers do not. Only an enum's active payload
 is alive and participates in ownership operations.
 
@@ -49,8 +50,9 @@ The annotation/convention and ownership of MRC fields/captures remain G07.
 
 C allocation and pointer operations remain C. `free(p)` does not null every alias;
 a non-null pointer is not proof of a live allocation. No `unsafe` block is required.
-Raw handles in a copying value require an explicit ownership design to avoid double
-release/free.
+Raw handles belong in a resource type, which does not copy; `p->init(...)` and
+`p->deinit()` construct and destroy one in raw storage. See
+[Resource types](initializers.md#resource-types-do-not-copy).
 
 ## Weak and synchronization
 

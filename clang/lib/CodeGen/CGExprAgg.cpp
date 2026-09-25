@@ -1411,6 +1411,23 @@ void AggExprEmitter::VisitBinAssign(const BinaryOperator *E) {
     return;
   }
 
+  // Cx: a resource value replaces the one it is assigned over, which is
+  // destroyed once the new one exists.
+  QualType LHSTy = E->getLHS()->getType();
+  if (CGF.isCxResourceType(LHSTy) && !CGF.isCxRawResourceStore(E->getLHS())) {
+    Address Tmp = CGF.CreateMemTemp(LHSTy, "cx.new");
+    CGF.EmitAggExpr(E->getRHS(),
+                    AggValueSlot::forAddr(Tmp, Qualifiers(),
+                                          AggValueSlot::IsDestructed,
+                                          AggValueSlot::DoesNotNeedGCBarriers,
+                                          AggValueSlot::IsNotAliased,
+                                          AggValueSlot::DoesNotOverlap));
+    CGF.emitCxResourceDestroy(LHS.getAddress(), LHSTy);
+    CGF.EmitAggregateCopy(LHS, CGF.MakeAddrLValue(Tmp, LHSTy), LHSTy,
+                          AggValueSlot::MayOverlap);
+    return;
+  }
+
   // Codegen the RHS so that it stores directly into the LHS.
   AggValueSlot LHSSlot = AggValueSlot::forLValue(
       LHS, AggValueSlot::IsDestructed, needsGC(E->getLHS()->getType()),

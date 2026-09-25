@@ -1780,11 +1780,23 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
       TranslateCxTupleLabel(BaseTy, NameInfo);
     const RecordType *RT =
         BaseTy.isNull() ? nullptr : BaseTy->getAs<RecordType>();
+    // A new resource value read through a member is never stored anywhere, so
+    // nothing would destroy it.
+    if (!IsArrow && Base->isPRValue() && isCxResourceType(Base->getType())) {
+      Diag(OpLoc, diag::err_cx_resource_member_of_new)
+          << Base->getType().getUnqualifiedType();
+      return ExprError();
+    }
     if (RT)
       if (FunctionDecl *M = LookupCxMethod(RT->getDecl(), NameInfo.getName()))
         // Access is checked on the method the call selects, because several
         // may share this name.
         return BuildCxMethodRef(Base, ThroughPointer, OpLoc, M, NameInfo);
+    if (RT && NameInfo.getName().getAsIdentifierInfo()->isStr("deinit")) {
+      Diag(NameInfo.getLoc(), diag::err_cx_deinit_call)
+          << 2 << BaseTy.getUnqualifiedType();
+      return ExprError();
+    }
   }
 
   ActOnMemberAccessExtraArgs ExtraArgs = {S, Id, ObjCImpDecl};

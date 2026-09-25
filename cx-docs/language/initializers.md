@@ -180,3 +180,64 @@ Automatic field cleanup always exists where needed. A custom `deinit()` adds a h
 before that cleanup; it does not suppress it. `deinit` cannot propagate a Cx error.
 A throwing cleanup operation must be handled locally or exposed separately as an
 explicit operation before destruction.
+
+```c
+struct File {
+    FILE* handle
+
+    init(char* path) { handle = fopen(path, "r") }
+    deinit() { fclose(handle) }
+}
+```
+
+- `deinit()` takes no parameters and declares no return type. It is declared in the
+  type's primary definition; its body may be in a continuation.
+- Destruction runs the body, then destroys every field that has a `deinit`, in
+  reverse declaration order. A type with no `deinit` of its own and a field that
+  has one receives an implicit one.
+- A type with a `deinit`, of its own or through a field, is a *resource type*.
+
+### Resource types do not copy
+
+A resource value has one owner. Copying an existing value, `b = a`, `use(a)`,
+`return a` or reading `*p`, is an error: two copies would release the same
+resource twice. A new value, a construction or a call's result, moves to where it
+is stored. A type that can be duplicated says so with an ordinary method that
+returns a new value.
+
+- **Locals** are initialized where they are declared and destroyed when their
+  scope is left, on the same cleanup stack as `defer`. A jump past a resource
+  local's declaration is an error.
+- **Fields** are destroyed with the value that holds them. In an initializer a
+  resource field is initialized once on each path, like a `const` field.
+- **Assignment** `f = File("b.txt")` builds the new value, destroys the old one,
+  then stores the new one.
+- **A discarded value**, `File("x")` alone, `(void)open()` or the left operand of a
+  comma, is destroyed at once. Reading a field of a new value, `open().handle`,
+  is an error.
+- **Arrays** are initialized with every element, `File fs[2] = { File("a"),
+  File("b") }`, and destroyed from the last element to the first.
+- Parameters, variadic arguments, static storage, union members, tuple elements
+  and enum payloads cannot hold a resource value. Moving a local out, for example
+  by `return a`, is planned.
+
+### Raw memory
+
+`p->init(...)` constructs a new value in the storage `p` points to, applying the
+type's defaults and then the selected initializer, without destroying what was
+there. `p->deinit()` destroys `*p` and leaves raw storage. They are the only way a
+resource value lives in memory from `malloc`:
+
+```c
+File *p = malloc(sizeof(File))
+p->init("a.txt")
+...
+p->deinit()
+free(p)
+```
+
+As with `malloc` and `free`, nothing checks that storage is constructed once and
+destroyed before it is freed. `init` and `deinit` are called this way only through
+a pointer; a local or field is constructed and destroyed automatically.
+
+`longjmp`, `exit` and signals do not run `deinit`, as they do not run `defer`.

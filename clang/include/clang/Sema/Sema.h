@@ -4528,6 +4528,27 @@ public:
 
   /// Whether \p FD is a Cx initializer, the `init` of its record.
   bool isCxInitializer(const FunctionDecl *FD) const;
+  /// The deinit of \p RD, written or implicit, or null.
+  FunctionDecl *getCxDeinit(const RecordDecl *RD) const;
+  /// Whether \p T, or its array element type, has a deinit: its values own a
+  /// resource and do not copy.
+  bool isCxResourceType(QualType T) const;
+  /// Diagnoses a resource value of type \p T where it cannot be stored.
+  /// \p Kind selects the place, as in err_cx_resource_storage.
+  bool CheckCxResourceStorage(QualType T, SourceLocation Loc, unsigned Kind);
+  /// Record completion: resource members of unions, and an implicit deinit
+  /// for a struct whose fields need one.
+  void completeCxRecordValueOperations(RecordDecl *RD);
+  /// A resource variable needs local storage and an initializer.
+  void CheckCxResourceVar(VarDecl *VD);
+  /// `p->init(...)`: construct a new value in the storage \p Ptr points to.
+  ExprResult ActOnCxInitInPlace(Expr *Ptr, SourceLocation InitLoc,
+                                SourceLocation LParenLoc,
+                                ArrayRef<const IdentifierInfo *> Labels,
+                                ArrayRef<SourceLocation> LabelLocs,
+                                MultiExprArg Args, SourceLocation RParenLoc);
+  /// Set while Cx builds a move of a new value, which reads it once.
+  bool CxMovingValue = false;
   /// The first custom initializer \p RD declares, or null.
   FunctionDecl *getCxFirstInitializer(const RecordDecl *RD) const;
   /// Check that an initializer's body initializes every field of `self` on

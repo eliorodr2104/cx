@@ -813,6 +813,18 @@ void InitListChecker::FillInEmptyInitForField(unsigned Init, FieldDecl *Field,
     = InitializedEntity::InitializeMember(Field, &ParentEntity);
 
   if (Init >= NumInits || !ILE->getInit(Init)) {
+    // Cx: a left-out resource member would be destroyed without ever having
+    // been constructed.
+    if (SemaRef.getLangOpts().CX && !SemaRef.CxBuildingConstruction &&
+        SemaRef.isCxResourceType(Field->getType())) {
+      if (!VerifyOnly)
+        SemaRef.Diag(Loc, diag::err_cx_resource_left_out)
+            << 0 << Field
+            << SemaRef.Context.getBaseElementType(Field->getType())
+                   .getUnqualifiedType();
+      hadError = true;
+      return;
+    }
     if (const RecordType *RType = ILE->getType()->getAsCanonical<RecordType>())
       if (!RType->getDecl()->isUnion())
         assert((Init < NumInits || VerifyOnly) &&
@@ -1066,6 +1078,16 @@ InitListChecker::FillInEmptyInitializations(const InitializedEntity &Entity,
     if (!InitExpr && Init < NumInits && ILE->hasArrayFiller())
       ILE->setInit(Init, ILE->getArrayFiller());
     else if (!InitExpr && !ILE->hasArrayFiller()) {
+      // Cx: every element of a resource array is constructed explicitly.
+      if (SemaRef.getLangOpts().CX && SemaRef.isCxResourceType(ElementType)) {
+        if (!VerifyOnly)
+          SemaRef.Diag(ILE->getEndLoc(), diag::err_cx_resource_left_out)
+              << 1 << ElementType
+              << SemaRef.Context.getBaseElementType(ElementType)
+                     .getUnqualifiedType();
+        hadError = true;
+        return;
+      }
       // In VerifyOnly mode, there's no point performing empty initialization
       // more than once.
       if (SkipEmptyInitChecks)

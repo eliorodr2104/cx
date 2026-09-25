@@ -13117,9 +13117,10 @@ static GVALinkage basicGVALinkageForFunction(const ASTContext &Context,
 
   // Cx: a method defined in its type's body is emitted by every translation
   // unit that uses it and merged at link time, like a C++ member function
-  // defined in its class. One implemented in a continuation is an ordinary
-  // strong definition.
-  if (FD->hasAttr<CxMethodAttr>() && isCxMethodDefinedInTypeBody(Context, FD))
+  // defined in its class, and so is one the compiler supplies. One
+  // implemented in a continuation is an ordinary strong definition.
+  if (FD->hasAttr<CxMethodAttr>() &&
+      (FD->isImplicit() || isCxMethodDefinedInTypeBody(Context, FD)))
     return GVA_DiscardableODR;
 
   // Non-user-provided functions get emitted as weak definitions with every

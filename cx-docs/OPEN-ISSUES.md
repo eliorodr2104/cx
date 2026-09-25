@@ -129,6 +129,10 @@ every path initializes every field, `self` is used only once complete, and a
 delegating initializer calls `self.init` exactly once. See
 [Initializers](language/initializers.md#definite-initialization).
 
+**Resolved for resource-owning values:** a struct with a `deinit` does not copy; new
+values move into locals, fields and return values, and raw storage is constructed
+and destroyed explicitly. See [Resource types](language/initializers.md#resource-types-do-not-copy).
+
 <a id="g08--writeback-and-mutable-views"></a>
 ## G08 - Writeback and mutable views
 

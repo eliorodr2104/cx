@@ -2222,11 +2222,13 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         LHS = ExprError();
       }
 
-      // Cx: `self.init(...)` delegates to another initializer of the type.
+      // Cx: `self.init(...)` delegates to another initializer of the type;
+      // `p->init(...)` constructs a new value in the storage `p` points to.
       if (getLangOpts().CX && !LHS.isInvalid() &&
           Name.getKind() == UnqualifiedIdKind::IK_Identifier &&
           Name.Identifier->isStr("init") && Tok.is(tok::l_paren) &&
-          Actions.isCxSelfReference(LHS.get())) {
+          (Actions.isCxSelfReference(LHS.get()) || OpKind == tok::arrow)) {
+        bool Delegation = Actions.isCxSelfReference(LHS.get());
         ExprVector Args;
         SmallVector<const IdentifierInfo *, 4> Labels;
         SmallVector<SourceLocation, 4> LabelLocs;
@@ -2253,7 +2255,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParen, RParen,
                                      SetTy))
           LHS = ExprError();
-        else
+        else if (Delegation)
           LHS = Actions.BuildCxOptionSetMethod(LHS.get(), Name.Identifier,
                                                Name.StartLocation, Labels,
                                                Args, RParen);
@@ -2326,6 +2328,10 @@ Parser::ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
                diag::err_expected_parentheses_around_typename)
               << OpTok.getName();
         } else {
+        else
+          LHS = Actions.ActOnCxInitInPlace(LHS.get(), Name.StartLocation,
+                                           LParen, Labels, LabelLocs, Args,
+                                           RParen);
           Diag(LParenLoc, diag::err_expected_parentheses_around_typename)
               << OpTok.getName() << FixItHint::CreateInsertion(LParenLoc, "(")
               << FixItHint::CreateInsertion(RParenLoc, ")");

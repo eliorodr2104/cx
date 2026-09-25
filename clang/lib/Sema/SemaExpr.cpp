@@ -749,6 +749,15 @@ ExprResult Sema::DefaultLvalueConversion(Expr *E) {
   if (!BoundsSafetyCheckUseOfCountAttrPtr(Res.get()))
     return ExprError();
 
+  // Cx: reading a resource value out of an object copies it, and two copies
+  // would release the same resource twice. A compound literal, which is how a
+  // generated construction is built, is a new value: reading it moves it.
+  if (getLangOpts().CX && !CxMovingValue && T->isRecordType() &&
+      !isUnevaluatedContext() &&
+      !isa<CompoundLiteralExpr>(E->IgnoreParens()) && isCxResourceType(T))
+    Diag(E->getExprLoc(), diag::err_cx_resource_copy)
+        << T.getUnqualifiedType();
+
   // C++ [conv.lval]p3:
   //   If T is cv std::nullptr_t, the result is a null pointer constant.
   CastKind CK = T->isNullPtrType() ? CK_NullToPointer : CK_LValueToRValue;
@@ -1073,6 +1082,9 @@ void Sema::checkVariadicArgument(const Expr *E, VariadicCallType CT) {
 
 ExprResult Sema::DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
                                                   FunctionDecl *FDecl) {
+  // Cx: nothing on the callee's side would destroy it.
+  if (CheckCxResourceStorage(E->getType(), E->getExprLoc(), 3))
+    return ExprError();
   if (const BuiltinType *PlaceholderTy = E->getType()->getAsPlaceholderType()) {
     // Strip the unbridged-cast placeholder expression off, if applicable.
     if (PlaceholderTy->getKind() == BuiltinType::ARCUnbridgedCast &&
@@ -10227,6 +10239,14 @@ AssignConvertType Sema::CheckSingleAssignmentConstraints(QualType LHSType,
   // to put the updated value.
   ExprResult LocalRHS = CallerRHS;
   ExprResult &RHS = ConvertRHS ? CallerRHS : LocalRHS;
+
+  // Cx: the value of assigning a resource is its target's value, so storing
+  // it elsewhere copies the target.
+  if (getLangOpts().CX && Diagnose && RHS.isUsable())
+    if (const auto *BO = dyn_cast<BinaryOperator>(RHS.get()->IgnoreParens());
+        BO && BO->isAssignmentOp() && isCxResourceType(BO->getType()))
+      Diag(BO->getExprLoc(), diag::err_cx_resource_copy)
+          << BO->getType().getUnqualifiedType();
 
   // Cx: `t = (1, 2.0)` converts each element to the tuple's.
   if (getLangOpts().CX && RHS.isUsable() && ConvertRHS)

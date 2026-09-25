@@ -23,6 +23,7 @@
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Sema.h"
 #include "TypeLocBuilder.h"
+#include "clang/AST/ASTConsumer.h"
 
 using namespace clang;
 
@@ -424,6 +425,12 @@ bool Sema::isCxInitializer(const FunctionDecl *FD) const {
   return FD && isCxInit(FD);
 }
 
+/// Whether \p FD is a Cx deinit: the method that destroys its receiver.
+static bool isCxDeinitDecl(const FunctionDecl *FD) {
+  return FD->hasAttr<CxMethodAttr>() && FD->getDeclName().isIdentifier() &&
+         FD->getName() == "deinit";
+}
+
 /// The method of \p RD that \p New redeclares, or null when it introduces a
 /// new one. Identity is the name, the written parameter types and the
 /// argument labels; local parameter names may differ. The return type and the
@@ -510,6 +517,21 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
   }
 
   bool InvalidInit = false;
+  if (NameInfo.getName().getAsIdentifierInfo()->isStr("deinit")) {
+    const auto *FPT = dyn_cast<FunctionProtoType>(FT);
+    if (!FT->getReturnType()->isVoidType() || (FPT && FPT->getNumParams())) {
+      Diag(D.getBeginLoc(), diag::err_cx_deinit_signature);
+      InvalidInit = true;
+    }
+    if (NonMutating) {
+      Diag(D.getBeginLoc(), diag::err_cx_deinit_mutating);
+      NonMutating = false;
+    }
+    if (RD->isUnion()) {
+      Diag(D.getBeginLoc(), diag::err_cx_deinit_in_union);
+      InvalidInit = true;
+    }
+  }
   if (NameInfo.getName().getAsIdentifierInfo()->isStr("init")) {
     // The parser gives an initializer a `void` return type, so a written one
     // is the only way this fails.
@@ -641,6 +663,12 @@ Decl *Sema::ActOnCxMethodDeclarator(Scope *S, Decl *TagD, Declarator &D,
     // see, cannot introduce one. It can implement a declared one.
     if (isCxInit(FD) && RD->isCompleteDefinition()) {
       Diag(FD->getLocation(), diag::err_cx_init_in_continuation) << RD;
+      Diag(RD->getLocation(), diag::note_cx_primary_definition) << RD;
+      FD->setInvalidDecl();
+    }
+    // Whether a type has a deinit decides whether its values copy.
+    if (isCxDeinitDecl(FD) && RD->isCompleteDefinition()) {
+      Diag(FD->getLocation(), diag::err_cx_deinit_in_continuation) << RD;
       Diag(RD->getLocation(), diag::note_cx_primary_definition) << RD;
       FD->setInvalidDecl();
     }
@@ -807,6 +835,16 @@ ExprResult Sema::BuildCxMethodCall(Expr *Callee, SourceLocation LParenLoc,
     return ExprError();
   }
   FunctionDecl *Method = Best->Function;
+
+  // A deinit runs automatically for a variable, so it is called only on
+  // storage a pointer reaches, and never on the method's own receiver.
+  if (isCxDeinitDecl(Method)) {
+    bool OnSelf = isCxSelfReference(Base);
+    if (!ME->isArrow() || OnSelf) {
+      Diag(ME->getMemberLoc(), diag::err_cx_deinit_call) << (OnSelf ? 1 : 0);
+      return ExprError();
+    }
+  }
 
   if (CheckCxMemberAccess(Method, ME->getMemberLoc(), /*ForWrite=*/false))
     return ExprError();
@@ -1362,6 +1400,8 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
     return ExprError();
   CheckCxArgumentLabels(Call.get(), Labels, LabelLocs);
 
+  // The object is read once, into the construction's value: a move.
+  llvm::SaveAndRestore<bool> Moving(CxMovingValue, true);
   ExprResult Value = ActOnStmtExprResult(
       BuildDeclRefExpr(Object, T, VK_LValue, RParenLoc));
   if (Value.isInvalid())
@@ -1373,6 +1413,160 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
   Stmt *Body[] = {new (Context) DeclStmt(DeclGroupRef(Object), TypeLoc,
                                          RParenLoc),
                   Call.get(), Value.get()};
+  ActOnStartStmtExpr();
+  return BuildStmtExpr(LParenLoc,
+                       CompoundStmt::Create(Context, Body, FPOptionsOverride(),
+                                            LParenLoc, RParenLoc),
+                       RParenLoc, /*TemplateDepth=*/0);
+}
+
+//===----------------------------------------------------------------------===//
+// Resource types
+//===----------------------------------------------------------------------===//
+
+FunctionDecl *Sema::getCxDeinit(const RecordDecl *RD) const {
+  if (!RD)
+    return nullptr;
+  for (Decl *D : RD->decls())
+    if (auto *FD = dyn_cast<FunctionDecl>(D))
+      if (isCxDeinitDecl(FD))
+        return FD;
+  return nullptr;
+}
+
+bool Sema::isCxResourceType(QualType T) const {
+  if (!getLangOpts().CX || T.isNull())
+    return false;
+  const RecordDecl *RD = Context.getBaseElementType(T)->getAsRecordDecl();
+  if (!RD || !(RD = RD->getDefinition()))
+    return false;
+  return getCxDeinit(RD);
+}
+
+bool Sema::CheckCxResourceStorage(QualType T, SourceLocation Loc,
+                                  unsigned Kind) {
+  if (!isCxResourceType(T))
+    return false;
+  Diag(Loc, diag::err_cx_resource_storage)
+      << Kind << Context.getBaseElementType(T).getUnqualifiedType();
+  return true;
+}
+
+void Sema::completeCxRecordValueOperations(RecordDecl *RD) {
+  if (!getLangOpts().CX || RD->isInvalidDecl())
+    return;
+  bool ResourceField = false;
+  for (FieldDecl *FD : RD->fields()) {
+    if (!isCxResourceType(FD->getType()))
+      continue;
+    // A union does not know which member is alive, so it cannot destroy one.
+    if (RD->isUnion()) {
+      Diag(FD->getLocation(), diag::err_cx_resource_in_union)
+          << Context.getBaseElementType(FD->getType()).getUnqualifiedType();
+      FD->setInvalidDecl();
+      continue;
+    }
+    ResourceField = true;
+  }
+  if (!ResourceField || getCxDeinit(RD) || RD->isUnion())
+    return;
+
+  // Destroying the fields is all an implicit deinit does; CodeGen adds that
+  // to every deinit.
+  QualType SelfTy = Context.getPointerType(Context.getCanonicalTagType(RD));
+  FunctionProtoType::ExtProtoInfo EPI;
+  QualType FnTy = Context.getFunctionType(Context.VoidTy, {SelfTy}, EPI);
+  SourceLocation Loc = RD->getEndLoc();
+  FunctionDecl *FD = FunctionDecl::Create(
+      Context, RD, Loc, Loc, &Context.Idents.get("deinit"), FnTy,
+      Context.getTrivialTypeSourceInfo(FnTy, Loc), SC_None,
+      getCurFPFeatures().isFPConstrained(), /*isInlineSpecified=*/false,
+      /*hasWrittenPrototype=*/true);
+  ParmVarDecl *Self = ParmVarDecl::Create(
+      Context, FD, Loc, Loc, &Context.Idents.get("self"), SelfTy,
+      Context.getTrivialTypeSourceInfo(SelfTy, Loc), SC_None, nullptr);
+  Self->setImplicit();
+  Self->setScopeInfo(0, 0);
+  FD->setParams({Self});
+  FD->setImplicit();
+  FD->setAccess(AS_public);
+  FD->addAttr(CxMethodAttr::CreateImplicit(Context));
+  const IdentifierInfo *Owner = Context.getCxModuleOwner(RD->getLocation());
+  FD->addAttr(CxLinkageAttr::CreateImplicit(
+      Context, const_cast<IdentifierInfo *>(Owner)));
+  FD->addAttr(OverloadableAttr::CreateImplicit(Context));
+  FD->setBody(CompoundStmt::Create(Context, {}, FPOptionsOverride(), Loc, Loc));
+  RD->addDecl(FD);
+  // Defined in its record, like a method with a body.
+  Consumer.HandleInlineFunctionDefinition(FD);
+}
+
+void Sema::CheckCxResourceVar(VarDecl *VD) {
+  if (!getLangOpts().CX || VD->isInvalidDecl() || isa<ParmVarDecl>(VD) ||
+      !isCxResourceType(VD->getType()))
+    return;
+  // Static storage was diagnosed when the variable was declared.
+  if (!VD->hasLocalStorage())
+    return;
+  // Its deinit runs when the scope ends, so it must hold a value by then.
+  if (!VD->getInit()) {
+    CheckCxResourceStorage(VD->getType(), VD->getLocation(), 1);
+    VD->setInvalidDecl();
+  }
+}
+
+ExprResult Sema::ActOnCxInitInPlace(Expr *Ptr, SourceLocation InitLoc,
+                                    SourceLocation LParenLoc,
+                                    ArrayRef<const IdentifierInfo *> Labels,
+                                    ArrayRef<SourceLocation> LabelLocs,
+                                    MultiExprArg Args,
+                                    SourceLocation RParenLoc) {
+  ExprResult P = DefaultFunctionArrayLvalueConversion(Ptr);
+  if (P.isInvalid())
+    return ExprError();
+  QualType PT = P.get()->getType();
+  if (!PT->isPointerType()) {
+    Diag(InitLoc, diag::err_cx_init_in_place_value);
+    return ExprError();
+  }
+  QualType T = PT->getPointeeType().getUnqualifiedType();
+  if (!CurContext->isFunctionOrMethod() || !getCurFunction()) {
+    Diag(InitLoc, diag::err_cx_init_at_file_scope) << T;
+    return ExprError();
+  }
+
+  // `({ T *__cx_place = p; *__cx_place = T(...); })`: the value is built as a
+  // construction is and moved into the storage, whose old bytes are not a
+  // value, so nothing is destroyed.
+  QualType PlaceTy = Context.getPointerType(T);
+  VarDecl *Place = VarDecl::Create(
+      Context, CurContext, InitLoc, InitLoc, &Context.Idents.get("__cx_place"),
+      PlaceTy, Context.getTrivialTypeSourceInfo(PlaceTy, InitLoc), SC_None);
+  Place->setImplicit();
+  ExprResult PInit = ImpCastExprToType(P.get(), PlaceTy, CK_NoOp);
+  AddInitializerToDecl(Place, PInit.get(), /*DirectInit=*/false);
+  if (Place->isInvalidDecl())
+    return ExprError();
+
+  ExprResult Value = ActOnCxConstruction(ParsedType::make(T), InitLoc,
+                                         LParenLoc, Labels, LabelLocs, Args,
+                                         RParenLoc);
+  if (Value.isInvalid())
+    return ExprError();
+  ExprResult Ref = BuildDeclRefExpr(Place, PlaceTy, VK_LValue, InitLoc);
+  ExprResult Target = CreateBuiltinUnaryOp(InitLoc, UO_Deref, Ref.get());
+  if (Target.isInvalid())
+    return ExprError();
+  ExprResult Store =
+      CreateBuiltinBinOp(InitLoc, BO_Assign, Target.get(), Value.get());
+  if (Store.isInvalid())
+    return ExprError();
+
+  // The storage is the value; the expression produces none.
+  Store = ImpCastExprToType(Store.get(), Context.VoidTy, CK_ToVoid);
+  Stmt *Body[] = {new (Context) DeclStmt(DeclGroupRef(Place), InitLoc,
+                                         RParenLoc),
+                  Store.get()};
   ActOnStartStmtExpr();
   return BuildStmtExpr(LParenLoc,
                        CompoundStmt::Create(Context, Body, FPOptionsOverride(),
@@ -1585,6 +1779,8 @@ QualType Sema::BuildCxTupleType(ArrayRef<QualType> Elems,
   bool HasLabels = false;
   for (unsigned I = 0, E = Elems.size(); I != E; ++I) {
     QualType T = Elems[I];
+    if (CheckCxResourceStorage(T, Locs[I], 4))
+      return QualType();
     if (T->isVoidType() || T->isFunctionType() ||
         T->isVariablyModifiedType()) {
       Diag(Locs[I], diag::err_cx_tuple_element_type) << T;
@@ -2020,6 +2216,9 @@ void Sema::ActOnCxEnumPayload(Decl *D, ArrayRef<QualType> Types,
     ED->setInvalidDecl();
   }
   QualType Values = getCxTagSpellingType(ED, EnumTy);
+  for (auto [T, Loc] : llvm::zip(Types, Locs))
+    if (CheckCxResourceStorage(T, Loc, 5))
+      return;
   for (auto [T, Loc] : llvm::zip(Types, Locs))
     if (Context.hasSameUnqualifiedType(T, Values)) {
       Diag(Loc, diag::err_cx_enum_recursive_payload) << EnumTy;

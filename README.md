@@ -101,6 +101,7 @@ Implemented and tested so far:
 - exhaustive `switch` over Cx enums, with payload bindings and no fallthrough
 - option sets with set literals and set algebra
 - `defer` blocks that run when their scope is left
+- `deinit` and resource types that never copy, with raw-memory construction
 - implicit tag names and optional semicolons
 - PCH, preprocessing, code completion, and tooling support
 

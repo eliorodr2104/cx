@@ -207,8 +207,11 @@ public:
     return Result;
   }
 
+  /// A const or resource field is initialized once: a later assignment would
+  /// overwrite a value that cannot be written again, or destroy one.
   bool isConstLeaf(unsigned Leaf) const {
-    return Tree.Nodes[Leaf].Field->getType().isConstQualified();
+    QualType T = Tree.Nodes[Leaf].Field->getType();
+    return T.isConstQualified() || S.isCxResourceType(T);
   }
 
   bool VisitBinaryOperator(BinaryOperator *BO) {
@@ -318,13 +321,16 @@ public:
     switch (R.Kind) {
     case RefKind::Init: {
       unsigned Bit = Tree.Nodes[R.Leaf].Bit;
-      bool Const = field(R.Leaf)->getType().isConstQualified();
+      QualType FT = field(R.Leaf)->getType();
+      bool Resource = S.isCxResourceType(FT);
+      bool Const = FT.isConstQualified() || Resource;
       if (R.InDefer) {
         // The block runs at the exit, after whatever follows it here.
         if (Report && !Tree.isReadable(R.Leaf, St.Must))
           S.Diag(Loc, diag::err_cx_init_defer_initializes) << field(R.Leaf) << 0;
         else if (Report && Const)
-          S.Diag(Loc, diag::err_cx_init_defer_initializes) << field(R.Leaf) << 1;
+          S.Diag(Loc, diag::err_cx_init_defer_initializes)
+              << field(R.Leaf) << (Resource ? 2 : 1);
         return;
       }
       if (BeforeDelegation) {
@@ -335,7 +341,8 @@ public:
           S.Diag(Loc, diag::err_cx_init_field_use) << field(R.Leaf);
       } else if (Const && St.May[Bit]) {
         if (Report)
-          S.Diag(Loc, diag::err_cx_init_const_reassigned) << field(R.Leaf);
+          S.Diag(Loc, diag::err_cx_init_const_reassigned)
+              << field(R.Leaf) << Resource;
       }
       St.Must.set(Bit);
       St.May.set(Bit);

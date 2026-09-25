@@ -2243,6 +2243,11 @@ void CodeGenFunction::EmitAutoVarCleanups(const AutoVarEmission &emission) {
     emitAutoVarTypeCleanup(emission, dtorKind);
   }
 
+  // Cx: a resource local is destroyed when its scope ends. The implicit
+  // object a construction builds is moved out instead.
+  if (getLangOpts().CX && !D.isImplicit())
+    pushCxResourceDestroy(emission.getObjectAddress(*this), D.getType());
+
   // In GC mode, honor objc_precise_lifetime.
   if (getLangOpts().getGC() != LangOptions::NonGC &&
       D.hasAttr<ObjCPreciseLifetimeAttr>()) {

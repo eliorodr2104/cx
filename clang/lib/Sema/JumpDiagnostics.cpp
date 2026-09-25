@@ -157,6 +157,12 @@ static ScopePair GetDiagForGotoScopeDecl(Sema &S, const Decl *D) {
       return ScopePair(diag::note_protected_by_cleanup,
                        diag::note_exits_cleanup);
 
+    // Cx: a resource local is destroyed when its scope ends, so a jump may
+    // not skip its construction.
+    if (VD->hasLocalStorage() && S.isCxResourceType(VD->getType()))
+      return ScopePair(diag::note_protected_by_cx_resource,
+                       diag::note_exits_cx_resource);
+
     if (VD->hasLocalStorage()) {
       switch (VD->getType().isDestructedType()) {
       case QualType::DK_objc_strong_lifetime:

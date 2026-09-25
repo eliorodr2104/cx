@@ -6538,7 +6538,9 @@ bool Parser::ParseCxMemberIntroducers(std::optional<unsigned> &Read,
 
 bool Parser::TryCxInitializerIntroducer() {
   if (!getLangOpts().CX || Tok.isNot(tok::identifier) ||
-      !Tok.getIdentifierInfo()->isStr("init") || NextToken().isNot(tok::l_paren))
+      !(Tok.getIdentifierInfo()->isStr("init") ||
+        Tok.getIdentifierInfo()->isStr("deinit")) ||
+      NextToken().isNot(tok::l_paren))
     return false;
   // `init (x);` declares a field when `init` is a type name, which is the one
   // C spelling this position already has a meaning for.
