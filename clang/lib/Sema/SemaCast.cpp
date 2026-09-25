@@ -3268,6 +3268,17 @@ void CastOperation::CheckCStyleCast() {
     return;
   }
 
+  // Cx: a Cx enum converts to nothing else; rawValue is the way out.
+  if (EnumDecl *FromCx = Self.getCxEnum(SrcType);
+      (FromCx || Self.getCxEnum(DestType)) &&
+      !Self.Context.hasSameUnqualifiedType(SrcType, DestType)) {
+    Self.Diag(OpRange.getBegin(), diag::err_cx_enum_cast)
+        << SrcType << DestType
+        << (FromCx && FromCx->getIntegerTypeSourceInfo()) << OpRange;
+    SrcExpr = ExprError();
+    return;
+  }
+
   // If either type is a pointer, the other type has to be either an
   // integer or a pointer.
   if (!DestType->isArithmeticType()) {

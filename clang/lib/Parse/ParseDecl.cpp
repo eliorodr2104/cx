@@ -2650,8 +2650,21 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
       PreferredType.enterVariableInit(Tok.getLocation(), ThisDecl);
       CxTupleContext = getLangOpts().CX && Tok.is(tok::l_paren) &&
                        Actions.isCxTupleInitContext(ThisDecl);
+      // Cx: `Color c = .red`, and `Color all[] = { .red, .green }`.
+      QualType CxInitType;
+      if (auto *VD = dyn_cast_or_null<VarDecl>(ThisDecl))
+        CxInitType = VD->getType();
+      CxCaseType = getCxCaseContext(CxInitType);
+      llvm::SaveAndRestore CxElements(
+          CxCaseElementType,
+          getLangOpts().CX && !CxInitType.isNull() && CxInitType->isArrayType()
+              ? getCxCaseContext(Actions.getASTContext()
+                                     .getAsArrayType(CxInitType)
+                                     ->getElementType())
+              : QualType());
       ExprResult Init = ParseInitializer(ThisDecl);
       CxTupleContext = false;
+      CxCaseType = QualType();
 
       // If this is the only decl in (possibly) range based for statement,
       // our best guess is that the user meant ':' instead of '='.
@@ -5490,6 +5503,16 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
                                               NextToken().getIdentifierInfo(),
                                               NextToken().getLocation());
 
+  // Cx: a body that uses `case` selects a Cx enum, a scoped enum in C.
+  // `case` cannot appear in a C enum body, so no C program changes meaning.
+  if (getLangOpts().CX && TUK == TagUseKind::Definition &&
+      ScopedEnumKWLoc.isInvalid() && Tok.is(tok::l_brace) &&
+      NextToken().is(tok::kw_case)) {
+    ScopedEnumKWLoc = NextToken().getLocation();
+    if (!Name)
+      Diag(StartLoc, diag::err_cx_enum_needs_name);
+  }
+
   bool Owned = false;
   bool IsDependent = false;
   const char *PrevSpec = nullptr;
@@ -5596,8 +5619,26 @@ void Parser::ParseEnumBody(SourceLocation StartLoc, Decl *EnumDecl,
 
   Decl *LastEnumConstDecl = nullptr;
 
+  // Cx: clauses `case a, b = 2`, separated by a line break or `;`.
+  bool CxEnum = getLangOpts().CX && EnumDecl &&
+                cast<clang::EnumDecl>(EnumDecl)->isScoped();
+  bool InCxClause = false;
+
   // Parse the enumerator-list.
   while (Tok.isNot(tok::r_brace)) {
+    if (CxEnum) {
+      if (TryConsumeToken(tok::kw_case)) {
+        InCxClause = true;
+      } else if (!InCxClause) {
+        Diag(Tok, diag::err_cx_enum_expected_case)
+            << FixItHint::CreateInsertion(Tok.getLocation(), "case ");
+        InCxClause = true;
+      }
+    } else if (getLangOpts().CX && Tok.is(tok::kw_case)) {
+      Diag(Tok, diag::err_cx_enum_mixed_case);
+      ConsumeToken();
+    }
+
     // Parse enumerator. If failed, try skipping till the start of the next
     // enumerator definition.
     if (Tok.isNot(tok::identifier)) {
@@ -5642,6 +5683,22 @@ void Parser::ParseEnumBody(SourceLocation StartLoc, Decl *EnumDecl,
 
     EnumConstantDecls.push_back(EnumConstDecl);
     LastEnumConstDecl = EnumConstDecl;
+
+    if (CxEnum) {
+      // A comma continues the clause; `;`, a line break, `case` or `}` ends
+      // it. A trailing comma before `}` is accepted, as in C.
+      if (TryConsumeToken(tok::comma))
+        continue;
+      InCxClause = false;
+      if (TryConsumeToken(tok::semi) || Tok.isOneOf(tok::r_brace, tok::kw_case) ||
+          Tok.isAtStartOfLine())
+        continue;
+      Diag(Tok, diag::err_cx_enum_clause_end);
+      SkipUntil(tok::comma, tok::semi, tok::r_brace, StopBeforeMatch);
+      if (!TryConsumeToken(tok::comma))
+        TryConsumeToken(tok::semi);
+      continue;
+    }
 
     if (Tok.is(tok::identifier)) {
       // We're missing a comma between enumerators.

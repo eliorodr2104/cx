@@ -11830,7 +11830,9 @@ static QualType mergeEnumWithInteger(ASTContext &Context, const EnumType *ET,
   // C99 6.7.2.2p4: Each enumerated type shall be compatible with char,
   // a signed integer type, or an unsigned integer type.
   // Compatibility is based on the underlying type, not the promotion
-  // type.
+  // type. A Cx enum, a scoped enum in C, is compatible with no integer.
+  if (Context.getLangOpts().CX && ET->getDecl()->isScoped())
+    return {};
   QualType underlyingType =
       ET->getDecl()->getDefinitionOrSelf()->getIntegerType();
   if (underlyingType.isNull())

@@ -2490,12 +2490,17 @@ StmtResult Parser::ParseReturnStatement() {
                  : diag::ext_generalized_initializer_lists)
             << R.get()->getSourceRange();
     } else {
-      // Cx: `return (a, b)` returns a tuple from a function that returns one.
-      if (getLangOpts().CX && Tok.is(tok::l_paren) && !Actions.getCurBlock())
-        if (const FunctionDecl *FD = Actions.getCurFunctionDecl())
-          CxTupleContext = Actions.isCxTupleType(FD->getReturnType());
+      // Cx: `return (a, b)` returns a tuple from a function that returns one,
+      // and `return .red` a case of the enum it returns.
+      if (getLangOpts().CX && !Actions.getCurBlock())
+        if (const FunctionDecl *FD = Actions.getCurFunctionDecl()) {
+          CxTupleContext =
+              Tok.is(tok::l_paren) && Actions.isCxTupleType(FD->getReturnType());
+          CxCaseType = getCxCaseContext(FD->getReturnType());
+        }
       R = ParseExpression();
       CxTupleContext = false;
+      CxCaseType = QualType();
     }
     if (R.isInvalid()) {
       SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);

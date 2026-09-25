@@ -1132,6 +1132,12 @@ static QualType GetTypeBeforeIntegralPromotion(const Expr *&E) {
 }
 
 ExprResult Sema::CheckSwitchCondition(SourceLocation SwitchLoc, Expr *Cond) {
+  // Cx: matching on a Cx enum is pattern matching, not a C switch.
+  if (Cond && getCxEnum(Cond->getType())) {
+    Diag(Cond->getExprLoc(), diag::err_cx_enum_switch)
+        << Cond->getType().getUnqualifiedType() << Cond->getSourceRange();
+    return ExprError();
+  }
   class SwitchConvertDiagnoser : public ICEConvertDiagnoser {
     Expr *Cond;
 

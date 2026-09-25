@@ -53,6 +53,7 @@ Implemented and tested so far:
 - struct methods, `self`, `~mutating`, continuations, and access control
 - generated construction, field defaults, and custom initializers
 - tuple types, literals, and destructuring
+- raw and simple enums with scoped cases, `.case` syntax, and `rawValue`
 - implicit tag names and optional semicolons
 - PCH, preprocessing, code completion, and tooling support
 

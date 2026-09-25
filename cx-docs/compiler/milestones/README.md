@@ -29,6 +29,7 @@ ones.
 - [M5a: Implicit tag names](M5a.md): **Completed**
 - [M5b: Optional semicolons](M5b.md): **Completed**
 - [M6a: Tuples](M6a.md): **Completed**
+- [M6b: Raw and simple enums](M6b.md): **Completed**
 
 ## Hardening passes
 

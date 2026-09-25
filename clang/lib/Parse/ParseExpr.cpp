@@ -397,6 +397,11 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
 
     // Special case handling for the ternary operator.
     ExprResult TernaryMiddle(true);
+    // Cx: the branches of `?:` take the enum the whole expression was
+    // expected to be, recorded where its condition starts.
+    QualType CxBranchCaseType;
+    if (getLangOpts().CX && NextTokPrec == prec::Conditional && LHS.isUsable())
+      CxBranchCaseType = CxCaseTypeAt.lookup(LHS.get()->getBeginLoc());
     if (NextTokPrec == prec::Conditional) {
       if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
         // Parse a braced-init-list here for error recovery purposes.
@@ -416,6 +421,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
         //   logical-OR-expression '?' expression ':' conditional-expression
         // In particular, the RHS of the '?' is 'expression', not
         // 'logical-OR-expression' as we might expect.
+        CxCaseType = CxBranchCaseType;
         TernaryMiddle = ParseExpression();
       } else {
         // Special case handling of "X ? Y : Z" where Y is empty:
@@ -483,6 +489,12 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
       CxTupleContext = getLangOpts().CX && OpToken.is(tok::equal) &&
                        Tok.is(tok::l_paren) && LHS.isUsable() &&
                        Actions.isCxTupleType(LHS.get()->getType());
+      // Cx: `c = .red`, `c == .red`, `c != .red`, and the last branch of `?:`.
+      if (OpToken.is(tok::question))
+        CxCaseType = CxBranchCaseType;
+      else if (getLangOpts().CX && LHS.isUsable() &&
+               OpToken.isOneOf(tok::equal, tok::equalequal, tok::exclaimequal))
+        CxCaseType = getCxCaseContext(LHS.get()->getType());
       RHS = ParseCastExpression(CastParseKind::AnyCastExpr);
     }
 
@@ -759,6 +771,9 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
   auto SavedType = PreferredType;
   NotCastExpr = false;
   bool InCxTupleContext = std::exchange(CxTupleContext, false);
+  QualType CxExpectedCaseType = std::exchange(CxCaseType, QualType());
+  if (!CxExpectedCaseType.isNull())
+    CxCaseTypeAt[Tok.getLocation()] = CxExpectedCaseType;
 
   // Are postfix-expression suffix operators permitted after this
   // cast-expression? If not, and we find some, we'll parse them anyway and
@@ -897,6 +912,19 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
                                NotPrimaryExpression);
 
   case tok::identifier:
+    // Cx: `Status.ok` names a case of a Cx enum. A variable named Status keeps
+    // C's member access (see getCxEnumQualifier).
+    if (getLangOpts().CX && NextToken().is(tok::period) &&
+        GetLookAheadToken(2).is(tok::identifier))
+      if (EnumDecl *ED = Actions.getCxEnumQualifier(
+              Tok.getIdentifierInfo(), Tok.getLocation(), getCurScope())) {
+        ConsumeToken(); // the enum
+        ConsumeToken(); // '.'
+        IdentifierInfo *Case = Tok.getIdentifierInfo();
+        SourceLocation CaseLoc = ConsumeToken();
+        return ParsePostfixExpressionSuffix(
+            Actions.ActOnCxEnumCase(ED, Case, CaseLoc));
+      }
     // Cx: a struct type name followed by '(' is generated construction, not a
     // call. A type name in expression position is not valid C.
     if (getLangOpts().CX && NextToken().is(tok::l_paren) &&
@@ -1312,6 +1340,18 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
     // followed by '(' is not a C expression, so nothing is reinterpreted.
     if (getLangOpts().CX && NextToken().is(tok::l_paren))
       return ParsePostfixExpressionSuffix(ParseCxConstructionExpression());
+    // Cx: `Status.ok` through a typedef of a Cx enum.
+    if (getLangOpts().CX && NextToken().is(tok::period) &&
+        GetLookAheadToken(2).is(tok::identifier))
+      if (EnumDecl *ED = Actions.getCxEnum(
+              Actions.GetTypeFromParser(getTypeAnnotation(Tok).get()))) {
+        ConsumeAnnotationToken();
+        ConsumeToken(); // '.'
+        IdentifierInfo *Case = Tok.getIdentifierInfo();
+        SourceLocation CaseLoc = ConsumeToken();
+        return ParsePostfixExpressionSuffix(
+            Actions.ActOnCxEnumCase(ED, Case, CaseLoc));
+      }
     if (isStartOfObjCClassMessageMissingOpenBracket()) {
       TypeResult Type = getTypeAnnotation(Tok);
 
@@ -1623,6 +1663,23 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
       break;
     }
     [[fallthrough]];
+  case tok::period:
+    // Cx: `.ok` takes its enum from the type the context expects. A leading
+    // '.' starts no C expression.
+    if (getLangOpts().CX && NextToken().is(tok::identifier)) {
+      ConsumeToken(); // '.'
+      IdentifierInfo *Case = Tok.getIdentifierInfo();
+      SourceLocation CaseLoc = ConsumeToken();
+      EnumDecl *ED = Actions.getCxEnum(CxExpectedCaseType);
+      if (!ED) {
+        Diag(CaseLoc, diag::err_cx_enum_case_needs_type) << Case->getName();
+        return ExprError();
+      }
+      return ParsePostfixExpressionSuffix(
+          Actions.ActOnCxEnumCase(ED, Case, CaseLoc));
+    }
+    goto ExpectedExpression;
+
   default:
   ExpectedExpression:
     NotCastExpr = true;
@@ -1946,6 +2003,10 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
                    CxTupleContext = Tok.is(tok::l_paren) && !LHS.isInvalid() &&
                                     Actions.isCxTupleArgument(LHS.get(),
                                                               ArgExprs.size());
+                   // `.red` for a Cx enum parameter.
+                   if (Tok.is(tok::period) && !LHS.isInvalid())
+                     CxCaseType = Actions.getCxCaseArgumentType(
+                         LHS.get(), ArgExprs.size());
                  }
                  PreferredType.enterFunctionArgument(Tok.getLocation(),
                                                      RunSignatureHelp);

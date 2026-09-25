@@ -231,6 +231,17 @@ def err_expected_semi_declaration : Error<
 def warn_cx_implicit_semicolon : Warning<
   "';' implied by the %select{line break|closing brace|end of file}0">,
   InGroup<CxImplicitSemicolon>, DefaultIgnore;
+def err_cx_enum_needs_name : Error<
+  "a Cx enum needs a name, since its cases are reached through it">;
+def err_cx_enum_expected_case : Error<
+  "each clause of a Cx enum starts with 'case'">;
+def err_cx_enum_mixed_case : Error<
+  "'case' cannot appear in an enum whose first enumerator has none; "
+  "a Cx enum starts every clause with 'case'">;
+def err_cx_enum_clause_end : Error<
+  "expected ',', ';', a line break or '}' after a Cx enum case">;
+def err_cx_enum_case_needs_type : Error<
+  "the enum of '.%0' is not known here; write 'Type.%0'">;
 def err_expected_semi_decl_list : Error<
   "expected ';' at end of declaration list">;
 def ext_expected_semi_decl_list : ExtWarn<

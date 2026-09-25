@@ -1772,6 +1772,9 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
     bool ThroughPointer = IsArrow || isCxSelfReference(Base);
     if (ThroughPointer)
       BaseTy = BaseTy->isPointerType() ? BaseTy->getPointeeType() : QualType();
+    // A Cx enum value has one member, rawValue.
+    if (!IsArrow && getCxEnum(Base->getType()))
+      return BuildCxEnumMember(Base, NameInfo);
     // A tuple label names its element's field.
     if (!BaseTy.isNull())
       TranslateCxTupleLabel(BaseTy, NameInfo);

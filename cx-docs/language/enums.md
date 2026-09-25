@@ -46,8 +46,10 @@ A Cx enum without a backing type is a simple enum. Its cases take no `= value`, 
 case.
 
 Cases are scoped. They are written `Status.ok`, or `.ok` where the expected type is known:
-an initializer, an assignment, a `return`, an argument, a tuple element of known type, the
-other operand of `==` or `!=`, and a `case` label of a Cx switch. A bare `ok` is an error.
+an initializer, an assignment, a `return`, an argument, the right operand of `==` or `!=`,
+both branches of a `?:` whose value is expected, an element of a braced array of the enum,
+and a `case` label of a Cx switch. A struct field in braces and a tuple literal element
+follow in M6.1; until then they take `Type.case`. A bare `ok` is an error.
 
 A raw or simple enum does not convert implicitly to or from an integer or another enum,
 and C casts in either direction are errors. `s.rawValue` yields a raw enum's value as its

@@ -20850,6 +20850,14 @@ Decl *Sema::ActOnEnumConstant(Scope *S, Decl *theEnumDecl, Decl *lastEnumConst,
   EnumConstantDecl *LastEnumConst =
     cast_or_null<EnumConstantDecl>(lastEnumConst);
 
+  // Cx: a simple enum has no backing type, so its cases carry no value.
+  bool CxEnum = getLangOpts().CX && TheEnumDecl->isScoped();
+  if (CxEnum && Val && !TheEnumDecl->getIntegerTypeSourceInfo()) {
+    Diag(EqualLoc, diag::err_cx_enum_simple_value)
+        << Context.getCanonicalTagType(TheEnumDecl);
+    Val = nullptr;
+  }
+
   // The scope passed in may not be a decl scope.  Zip up the scope tree until
   // we find one that is.
   S = getNonFieldDeclScope(S);
@@ -20911,6 +20919,10 @@ Decl *Sema::ActOnEnumConstant(Scope *S, Decl *theEnumDecl, Decl *lastEnumConst,
   // Register this decl in the current scope stack.
   New->setAccess(TheEnumDecl->getAccess());
   PushOnScopeChains(New, S);
+  // Cx: a case is reached through its enum; remember it for the hint on a
+  // bare use of its name.
+  if (CxEnum)
+    CxEnumCaseOwners.try_emplace(Id, TheEnumDecl);
 
   ActOnDocumentableDecl(New);
 
@@ -21201,6 +21213,16 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
   if (LangOpts.ShortEnums)
     Packed = true;
 
+  // Cx: a simple enum is stored in the smallest unsigned integer holding its
+  // cases, whose values are 0, 1, ... since they cannot be written.
+  bool CxEnum = getLangOpts().CX && Enum->isScoped();
+  if (CxEnum && !Enum->getIntegerTypeSourceInfo()) {
+    size_t N = llvm::count_if(Elements, [](Decl *D) { return D; });
+    Enum->setIntegerType(N <= 0x100     ? Context.UnsignedCharTy
+                         : N <= 0x10000 ? Context.UnsignedShortTy
+                                        : Context.UnsignedIntTy);
+  }
+
   // If the enum already has a type because it is fixed or dictated by the
   // target, promote that type instead of analyzing the enumerators.
   if (Enum->isComplete()) {
@@ -21252,7 +21274,8 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
       NewSign = true;
     } else if (ECD->getType() == BestType) {
       // Already the right type!
-      if (getLangOpts().CPlusPlus || (getLangOpts().C23 && Enum->isFixed()))
+      if (getLangOpts().CPlusPlus || (getLangOpts().C23 && Enum->isFixed()) ||
+          CxEnum)
         // C++ [dcl.enum]p4: Following the closing brace of an
         // enum-specifier, each enumerator has the type of its
         // enumeration.
@@ -21277,7 +21300,7 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
       ECD->setInitExpr(ImplicitCastExpr::Create(
           Context, NewTy, CK_IntegralCast, ECD->getInitExpr(),
           /*base paths*/ nullptr, VK_PRValue, FPOptionsOverride()));
-    if (getLangOpts().CPlusPlus ||
+    if (getLangOpts().CPlusPlus || CxEnum ||
         (getLangOpts().C23 && (Enum->isFixed() || !MembersRepresentableByInt)))
       // C++ [dcl.enum]p4: Following the closing brace of an
       // enum-specifier, each enumerator has the type of its
@@ -21293,6 +21316,19 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
                            NumPositiveBits, NumNegativeBits);
 
   CheckForDuplicateEnumValues(*this, Elements, Enum, EnumType);
+
+  // Cx: two cases with one value would make rawValue and matching ambiguous.
+  if (CxEnum) {
+    llvm::DenseMap<llvm::APSInt, EnumConstantDecl *> Seen;
+    for (Decl *D : Elements)
+      if (auto *ECD = cast_or_null<EnumConstantDecl>(D)) {
+        auto [It, New] = Seen.try_emplace(ECD->getInitVal(), ECD);
+        if (!New)
+          Diag(ECD->getLocation(), diag::err_cx_enum_duplicate_value)
+              << It->second << ECD << EnumType
+              << toString(ECD->getInitVal(), 10);
+      }
+  }
   CheckForComparisonInEnumInitializer(*this, Enum);
 
   if (Enum->isClosedFlag()) {

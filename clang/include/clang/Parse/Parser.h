@@ -2125,6 +2125,26 @@ private:
   /// tuple is expected. The next ParseCastExpression consumes it.
   bool CxTupleContext = false;
 
+  /// Cx: the enum type a leading `.case` takes in the expression about to be
+  /// parsed. Consumed by the next ParseCastExpression, like CxTupleContext.
+  QualType CxCaseType;
+
+  /// Cx: the enum type expected by each expression that had one, keyed by
+  /// where it starts, so both branches of a `?:` whose condition starts there
+  /// take it too.
+  llvm::DenseMap<SourceLocation, QualType> CxCaseTypeAt;
+
+  /// Cx: \p T when it is a Cx enum type, for CxCaseType; otherwise null.
+  QualType getCxCaseContext(QualType T) {
+    return getLangOpts().CX && Actions.getCxEnum(T) ? T : QualType();
+  }
+
+  /// Cx: the element type of the array a braced initializer initializes.
+  QualType CxCaseElementType;
+
+  /// Cx: whether `. ident` and `[ ... ]` designators from here reach an `=`.
+  bool isCxDesignatorAhead();
+
   /// From inside parentheses, skip to a comma at their top level, or to what
   /// closes them. Used only under a tentative parse.
   bool skipToCxTopLevelComma();

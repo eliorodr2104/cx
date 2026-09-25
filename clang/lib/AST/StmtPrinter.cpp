@@ -1387,8 +1387,24 @@ void StmtPrinter::VisitConstantExpr(ConstantExpr *Node) {
   PrintExpr(Node->getSubExpr());
 }
 
+/// Cx: the enum of a Cx enum type, a scoped enum in C, or null.
+static const EnumDecl *getCxEnumDecl(QualType T) {
+  const auto *ET = T.isNull() ? nullptr : T->getAs<EnumType>();
+  if (!ET)
+    return nullptr;
+  const EnumDecl *ED = ET->getDecl();
+  return ED->isScoped() && ED->getASTContext().getLangOpts().CX ? ED : nullptr;
+}
+
 void StmtPrinter::VisitDeclRefExpr(DeclRefExpr *Node) {
   ValueDecl *VD = Node->getDecl();
+  // Cx: a case of a Cx enum is reached through its enum.
+  if (const auto *ECD = dyn_cast<EnumConstantDecl>(VD))
+    if (const auto *ED = dyn_cast<EnumDecl>(ECD->getDeclContext());
+        ED && ED->isScoped() && ED->getASTContext().getLangOpts().CX) {
+      OS << ED->getName() << '.' << ECD->getName();
+      return;
+    }
   if (const auto *OCED = dyn_cast<OMPCapturedExprDecl>(VD)) {
     OCED->getInit()->IgnoreImpCasts()->printPretty(OS, nullptr, Policy);
     return;
@@ -1975,6 +1991,18 @@ void StmtPrinter::VisitCompoundLiteralExpr(CompoundLiteralExpr *Node) {
 }
 
 void StmtPrinter::VisitImplicitCastExpr(ImplicitCastExpr *Node) {
+  // Cx: the only conversion out of a Cx enum is its rawValue.
+  if (Node->getCastKind() == CK_IntegralCast &&
+      getCxEnumDecl(Node->getSubExpr()->getType())) {
+    const Expr *Sub = Node->getSubExpr()->IgnoreImpCasts();
+    bool Postfix = isa<DeclRefExpr, MemberExpr, CallExpr, ParenExpr,
+                       ArraySubscriptExpr>(Sub);
+    if (!Postfix)
+      OS << '(';
+    PrintExpr(Node->getSubExpr());
+    OS << (Postfix ? ".rawValue" : ").rawValue");
+    return;
+  }
   // No need to print anything, simply forward to the subexpression.
   PrintExpr(Node->getSubExpr());
 }

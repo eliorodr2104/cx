@@ -4387,6 +4387,32 @@ public:
   /// The elements of each tuple literal as written, for retargeting.
   llvm::DenseMap<const Expr *, SmallVector<Expr *, 4>> CxTupleLiteralElems;
 
+  /// Cx: the enum of a Cx enum type (a scoped enum in C), or null.
+  EnumDecl *getCxEnum(QualType T);
+
+  /// Cx: the Cx enum \p Name names, usable as `Name.case`, or null. An
+  /// ordinary variable of that name wins, since C reads `x.y` on it.
+  EnumDecl *getCxEnumQualifier(IdentifierInfo *Name, SourceLocation Loc,
+                               Scope *S);
+
+  /// Cx: `ED.Name`, or `.Name` where \p ED is the expected enum.
+  ExprResult ActOnCxEnumCase(EnumDecl *ED, IdentifierInfo *Name,
+                             SourceLocation NameLoc);
+
+  /// Cx: the Cx enum type argument \p Index of a call to \p Callee expects,
+  /// when every function \p Callee may name agrees; null otherwise.
+  QualType getCxCaseArgumentType(Expr *Callee, unsigned Index);
+
+  /// Cx: `Base.Name` on a Cx enum value; only `rawValue` exists.
+  ExprResult BuildCxEnumMember(Expr *Base, const DeclarationNameInfo &Name);
+
+  /// Cx: diagnose a Cx enum value used as a condition; true if \p E is one.
+  bool diagnoseCxEnumCondition(const Expr *E);
+
+  /// Cx: the enum owning the first Cx case seen with each name, for the
+  /// "write `.ok`" hint on a bare case name.
+  llvm::DenseMap<const IdentifierInfo *, EnumDecl *> CxEnumCaseOwners;
+
   /// Whether \p FD is a Cx initializer, the `init` of its record.
   bool isCxInitializer(const FunctionDecl *FD) const;
 

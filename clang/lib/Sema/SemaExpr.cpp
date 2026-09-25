@@ -1089,6 +1089,14 @@ ExprResult Sema::DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
     }
   }
 
+  // Cx: a Cx enum reaches '...' only as its rawValue.
+  if (EnumDecl *ED = getCxEnum(E->getType())) {
+    Diag(E->getBeginLoc(), diag::err_cx_enum_variadic)
+        << E->getType().getUnqualifiedType()
+        << (ED->getIntegerTypeSourceInfo() != nullptr) << E->getSourceRange();
+    return ExprError();
+  }
+
   ExprResult ExprRes = DefaultArgumentPromotion(E);
   if (ExprRes.isInvalid())
     return ExprError();
@@ -2623,6 +2631,14 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
                                ArrayRef<Expr *> Args, DeclContext *LookupCtx) {
   DeclarationName Name = R.getLookupName();
   SourceRange NameRange = R.getLookupNameInfo().getSourceRange();
+
+  // Cx: a case of a Cx enum is reached through its enum.
+  if (getLangOpts().CX && Name.isIdentifier())
+    if (EnumDecl *ED = CxEnumCaseOwners.lookup(Name.getAsIdentifierInfo())) {
+      Diag(R.getNameLoc(), diag::err_cx_enum_case_unqualified)
+          << Name.getAsIdentifierInfo()->getName() << ED->getName();
+      return true;
+    }
 
   unsigned diagnostic = diag::err_undeclared_var_use;
   unsigned diagnostic_suggest = diag::err_undeclared_var_use_suggest;
@@ -8447,6 +8463,8 @@ bool Sema::DiagnoseConditionalForNull(const Expr *LHSExpr, const Expr *RHSExpr,
 static bool checkCondition(Sema &S, const Expr *Cond,
                            SourceLocation QuestionLoc) {
   QualType CondTy = Cond->getType();
+  if (S.diagnoseCxEnumCondition(Cond))
+    return true;
 
   // OpenCL v1.1 s6.3.i says the condition cannot be a floating point type.
   if (S.getLangOpts().OpenCL && CondTy->isFloatingType()) {
@@ -11263,6 +11281,9 @@ static void diagnoseScopedEnums(Sema &S, const SourceLocation Loc,
   const bool RHSIsScoped = RHSType->isScopedEnumeralType();
   if (!LHSIsScoped && !RHSIsScoped)
     return;
+  // The note suggests a C++ cast; a Cx enum converts only through rawValue.
+  if (!S.getLangOpts().CPlusPlus)
+    return;
   if (BinaryOperator::isAssignmentOp(Opc) && LHSIsScoped)
     return;
   if (!LHSIsScoped && !LHSType->isIntegralOrUnscopedEnumerationType())
@@ -12954,6 +12975,15 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
   bool IsRelational = BinaryOperator::isRelationalOp(Opc);
   bool IsThreeWay = Opc == BO_Cmp;
   bool IsOrdered = IsRelational || IsThreeWay;
+  // Cx: cases of a Cx enum are equal or not; they have no order.
+  if (IsOrdered)
+    for (ExprResult *Side : {&LHS, &RHS})
+      if (Side->isUsable() && getCxEnum(Side->get()->getType())) {
+        Diag(Loc, diag::err_cx_enum_ordering)
+            << Side->get()->getType().getUnqualifiedType()
+            << LHS.get()->getSourceRange() << RHS.get()->getSourceRange();
+        return QualType();
+      }
   auto IsAnyPointerType = [](ExprResult E) {
     QualType Ty = E.get()->getType();
     return Ty->isPointerType() || Ty->isMemberPointerType();
@@ -14028,6 +14058,12 @@ inline QualType Sema::CheckLogicalOperands(ExprResult &LHS, ExprResult &RHS,
 
     RHS = UsualUnaryConversions(RHS.get());
     if (RHS.isInvalid())
+      return QualType();
+
+    // Diagnose both operands before giving up.
+    bool CxLHS = diagnoseCxEnumCondition(LHS.get());
+    bool CxRHS = diagnoseCxEnumCondition(RHS.get());
+    if (CxLHS || CxRHS)
       return QualType();
 
     if (LHS.get()->getType() == Context.AMDGPUFeaturePredicateTy)
@@ -21380,6 +21416,8 @@ ExprResult Sema::CheckBooleanCondition(SourceLocation Loc, Expr *E,
     if (ERes.isInvalid())
       return ExprError();
     E = ERes.get();
+    if (diagnoseCxEnumCondition(E))
+      return ExprError();
 
     QualType T = E->getType();
     if (!T->isScalarType()) { // C99 6.8.4.1p1

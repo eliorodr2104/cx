@@ -1829,3 +1829,122 @@ Sema::DeclGroupPtrTy Sema::ActOnCxDestructuring(
   }
   return BuildDeclaratorGroup(Decls);
 }
+
+EnumDecl *Sema::getCxEnum(QualType T) {
+  if (!getLangOpts().CX || T.isNull())
+    return nullptr;
+  const auto *ET = T->getAs<EnumType>();
+  if (!ET)
+    return nullptr;
+  // A Cx enum is defined by its `case` body; a definition still being parsed
+  // counts, so a later case can name an earlier one as `Enum.case`.
+  EnumDecl *ED = ET->getDecl();
+  if (EnumDecl *Def = ED->getDefinition())
+    ED = Def;
+  return ED->isScoped() ? ED : nullptr;
+}
+
+EnumDecl *Sema::getCxEnumQualifier(IdentifierInfo *Name, SourceLocation Loc,
+                                   Scope *S) {
+  if (!getLangOpts().CX || !Name)
+    return nullptr;
+  // A typedef or a bare tag; any other ordinary declaration of the name, such
+  // as a variable, keeps C's reading of `name.member`.
+  ParsedType T = getTypeName(*Name, Loc, S);
+  if (!T)
+    T = getCxImplicitTagType(*Name, Loc, S);
+  return T ? getCxEnum(GetTypeFromParser(T)) : nullptr;
+}
+
+ExprResult Sema::ActOnCxEnumCase(EnumDecl *ED, IdentifierInfo *Name,
+                                 SourceLocation NameLoc) {
+  for (NamedDecl *D : ED->lookup(Name))
+    if (auto *ECD = dyn_cast<EnumConstantDecl>(D)) {
+      if (DiagnoseUseOfDecl(ECD, NameLoc))
+        return ExprError();
+      MarkAnyDeclReferenced(NameLoc, ECD, /*OdrUse=*/false);
+      return BuildDeclRefExpr(ECD, ECD->getType(), VK_PRValue, NameLoc);
+    }
+  Diag(NameLoc, diag::err_cx_enum_no_case)
+      << Name << Context.getCanonicalTagType(ED);
+  return ExprError();
+}
+
+QualType Sema::getCxCaseArgumentType(Expr *Callee, unsigned Index) {
+  if (!getLangOpts().CX || !Callee)
+    return QualType();
+  Callee = Callee->IgnoreParenImpCasts();
+  // The Cx enum every candidate expects at Index; null when none does or two
+  // candidates disagree.
+  QualType Found;
+  bool Conflict = false;
+  auto Consider = [&](QualType T) {
+    if (!getCxEnum(T))
+      return;
+    T = Context.getCanonicalType(T).getUnqualifiedType();
+    if (Found.isNull())
+      Found = T;
+    else if (Found != T)
+      Conflict = true;
+  };
+  auto ConsiderDecl = [&](const NamedDecl *ND, bool ThroughReceiver) {
+    const auto *FD = dyn_cast<FunctionDecl>(ND->getUnderlyingDecl());
+    if (!FD)
+      return;
+    unsigned I = Index + (ThroughReceiver ? getCxReceiverOffset(FD) : 0);
+    if (I < FD->getNumParams())
+      Consider(FD->getParamDecl(I)->getType());
+  };
+  if (auto *DRE = dyn_cast<DeclRefExpr>(Callee);
+      DRE && isa<FunctionDecl>(DRE->getDecl())) {
+    ConsiderDecl(DRE->getDecl(), false);
+  } else if (auto *ME = dyn_cast<MemberExpr>(Callee);
+             ME && isa<FunctionDecl>(ME->getMemberDecl())) {
+    ConsiderDecl(ME->getMemberDecl(), true);
+  } else if (auto *OE = dyn_cast<OverloadExpr>(Callee)) {
+    for (const NamedDecl *ND : OE->decls())
+      ConsiderDecl(ND, false);
+  } else {
+    // A call through a function or block pointer.
+    QualType T = Callee->getType();
+    if (T.isNull())
+      return QualType();
+    if (const auto *PT = T->getAs<PointerType>())
+      T = PT->getPointeeType();
+    else if (const auto *BPT = T->getAs<BlockPointerType>())
+      T = BPT->getPointeeType();
+    if (const auto *FPT = T->getAs<FunctionProtoType>();
+        FPT && Index < FPT->getNumParams())
+      Consider(FPT->getParamType(Index));
+  }
+  return Conflict ? QualType() : Found;
+}
+
+ExprResult Sema::BuildCxEnumMember(Expr *Base,
+                                   const DeclarationNameInfo &Name) {
+  EnumDecl *ED = getCxEnum(Base->getType());
+  QualType EnumTy = Base->getType().getUnqualifiedType();
+  const IdentifierInfo *II = Name.getName().getAsIdentifierInfo();
+  if (!II || !II->isStr("rawValue")) {
+    Diag(Name.getLoc(), diag::err_cx_enum_no_member)
+        << Name.getName() << EnumTy;
+    return ExprError();
+  }
+  if (!ED->getIntegerTypeSourceInfo()) {
+    Diag(Name.getLoc(), diag::err_cx_enum_no_raw_value) << EnumTy;
+    return ExprError();
+  }
+  // The only conversion out of a Cx enum; the printers show it as rawValue.
+  ExprResult R = DefaultLvalueConversion(Base);
+  if (R.isInvalid())
+    return ExprError();
+  return ImpCastExprToType(R.get(), ED->getIntegerType(), CK_IntegralCast);
+}
+
+bool Sema::diagnoseCxEnumCondition(const Expr *E) {
+  if (!E || !getCxEnum(E->getType()))
+    return false;
+  Diag(E->getExprLoc(), diag::err_cx_enum_condition)
+      << E->getType().getUnqualifiedType() << E->getSourceRange();
+  return true;
+}

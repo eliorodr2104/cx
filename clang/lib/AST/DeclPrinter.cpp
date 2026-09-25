@@ -628,7 +628,9 @@ void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
   if (!Policy.SuppressSpecifiers && D->isModulePrivate())
     Out << "__module_private__ ";
   Out << "enum";
-  if (D->isScoped()) {
+  // Cx: a Cx enum is a scoped enum in C, spelled by its `case` body.
+  bool CxEnum = Context.getLangOpts().CX && D->isScoped();
+  if (D->isScoped() && !CxEnum) {
     if (D->isScopedUsingClassTag())
       Out << " class";
     else
@@ -641,7 +643,8 @@ void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
   if (D->getDeclName())
     Out << ' ' << D->getDeclName();
 
-  if (D->isFixed())
+  // A simple Cx enum has no written backing type.
+  if (CxEnum ? D->getIntegerTypeSourceInfo() != nullptr : D->isFixed())
     Out << " : " << D->getIntegerType().stream(Policy);
 
   if (D->isCompleteDefinition()) {
@@ -670,6 +673,12 @@ void DeclPrinter::VisitRecordDecl(RecordDecl *D) {
 }
 
 void DeclPrinter::VisitEnumConstantDecl(EnumConstantDecl *D) {
+  // Cx: one `case` clause holds every case, separated by the commas the
+  // declaration context prints.
+  if (const auto *ED = dyn_cast<EnumDecl>(D->getDeclContext());
+      ED && ED->isScoped() && Context.getLangOpts().CX &&
+      *ED->enumerator_begin() == D)
+    Out << "case ";
   Out << *D;
   if (std::optional<std::string> Attrs = prettyPrintAttributes(D))
     Out << ' ' << *Attrs;

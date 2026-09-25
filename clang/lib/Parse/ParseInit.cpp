@@ -22,12 +22,31 @@
 #include "clang/Sema/SemaObjC.h"
 using namespace clang;
 
+bool Parser::isCxDesignatorAhead() {
+  RevertingTentativeParsingAction PA(*this);
+  while (true) {
+    if (TryConsumeToken(tok::period)) {
+      if (!TryConsumeToken(tok::identifier))
+        return false;
+    } else if (Tok.is(tok::l_square)) {
+      ConsumeBracket();
+      if (!SkipUntil(tok::r_square, StopAtSemi))
+        return false;
+    } else {
+      return Tok.is(tok::equal);
+    }
+  }
+}
+
 bool Parser::MayBeDesignationStart() {
   switch (Tok.getKind()) {
   default:
     return false;
 
   case tok::period:      // designator: '.' identifier
+    // Cx: `{ .red }` holds a case of a Cx enum; a designator reaches its '='.
+    if (getLangOpts().CX)
+      return isCxDesignatorAhead();
     return true;
 
   case tok::l_square: {  // designator: array-designator
@@ -435,6 +454,8 @@ ExprResult Parser::ParseBraceInitializer() {
       Actions, EnterExpressionEvaluationContext::InitList);
 
   bool InitExprsOk = true;
+  // Cx: `.red` elements of an array of a Cx enum. Nested braces do not see it.
+  QualType CxElementType = std::exchange(CxCaseElementType, QualType());
   QualType LikelyType = PreferredType.get(T.getOpenLocation());
   DesignatorCompletionInfo DesignatorCompletion{InitExprs, LikelyType};
   bool CalledSignatureHelp = false;
@@ -471,8 +492,10 @@ ExprResult Parser::ParseBraceInitializer() {
       SubElt = ParseInitializerWithPotentialDesignator(DesignatorCompletion);
     else if (Tok.getKind() == tok::annot_embed)
       SubElt = createEmbedExpr();
-    else
+    else {
+      CxCaseType = CxElementType;
       SubElt = ParseInitializer();
+    }
 
     if (Tok.is(tok::ellipsis))
       SubElt = Actions.ActOnPackExpansion(SubElt.get(), ConsumeToken());

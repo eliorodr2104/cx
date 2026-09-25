@@ -2826,6 +2826,29 @@ def err_cx_destructure_count : Error<
 def err_cx_destructure_file_scope : Error<
   "a tuple can only be destructured inside a function">;
 
+def err_cx_enum_simple_value : Error<
+  "a case of %0 cannot have a value, since %0 has no backing type">;
+def err_cx_enum_duplicate_value : Error<
+  "cases %0 and %1 of %2 share the value %3">;
+def err_cx_enum_no_case : Error<"%1 has no case named %0">;
+def err_cx_enum_case_unqualified : Error<
+  "'%0' is a case of '%1'; write '.%0' where '%1' is expected, or '%1.%0'">;
+def err_cx_enum_no_raw_value : Error<
+  "%0 has no 'rawValue', since it has no backing type">;
+def err_cx_enum_no_member : Error<
+  "%1 has no member %0; a Cx enum value only has 'rawValue'">;
+def err_cx_enum_cast : Error<
+  "cannot cast %0 to %1; a Cx enum does not convert to other types"
+  "%select{|, use '.rawValue'}2">;
+def err_cx_enum_condition : Error<
+  "a value of %0 is not a condition; compare it with '=='">;
+def err_cx_enum_ordering : Error<
+  "cases of %0 have no order; only '==' and '!=' compare them">;
+def err_cx_enum_variadic : Error<
+  "a value of %0 cannot be passed to '...'%select{|; pass '.rawValue'}1">;
+def err_cx_enum_switch : Error<
+  "a switch on %0 needs Cx pattern matching, which is not available yet">;
+
 def err_auto_not_allowed_var_inst : Error<
   "'auto' variable template instantiation is not allowed">;
 def err_auto_var_requires_init : Error<
