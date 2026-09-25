@@ -2222,6 +2222,24 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         LHS = ExprError();
       }
 
+      // Cx: `self.init(...)` delegates to another initializer of the type.
+      if (getLangOpts().CX && !LHS.isInvalid() &&
+          Name.getKind() == UnqualifiedIdKind::IK_Identifier &&
+          Name.Identifier->isStr("init") && Tok.is(tok::l_paren) &&
+          Actions.isCxSelfReference(LHS.get())) {
+        ExprVector Args;
+        SmallVector<const IdentifierInfo *, 4> Labels;
+        SmallVector<SourceLocation, 4> LabelLocs;
+        SourceLocation LParen, RParen;
+        if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParen, RParen))
+          LHS = ExprError();
+        else
+          LHS = Actions.ActOnCxInitDelegation(LHS.get(), Name.StartLocation,
+                                              LParen, Labels, LabelLocs, Args,
+                                              RParen);
+        break;
+      }
+
       // Cx: `set.contains(x)` and the other option set tests.
       if (getLangOpts().CX && !LHS.isInvalid() && OpKind == tok::period &&
           Name.getKind() == UnqualifiedIdKind::IK_Identifier &&

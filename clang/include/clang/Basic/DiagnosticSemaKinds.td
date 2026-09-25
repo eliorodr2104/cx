@@ -2750,6 +2750,38 @@ def err_cx_init_in_union : Error<
 def err_cx_init_at_file_scope : Error<
   "construction of %0 runs an initializer, so it cannot appear outside a "
   "function">;
+def err_cx_braces_with_init : Error<
+  "%0 has an initializer, so it is constructed with '%1(...)', not with "
+  "braces">;
+def note_cx_initializer_declared : Note<"initializer declared here">;
+def err_cx_init_field_missing : Error<
+  "field %0 is not initialized when the initializer %select{returns|ends}1">;
+def err_cx_init_union_missing : Error<
+  "no member of the anonymous union is initialized when the initializer "
+  "%select{returns|ends}0">;
+def note_cx_init_field_declared : Note<
+  "%select{field declared here|an array field is initialized by a default|"
+  "anonymous union declared here}0">;
+def err_cx_init_field_use : Error<
+  "field %0 is used before it is initialized">;
+def err_cx_init_self_use : Error<
+  "'self' is used before field %0 is initialized">;
+def err_cx_init_self_use_union : Error<
+  "'self' is used before its anonymous union is initialized">;
+def err_cx_init_const_reassigned : Error<
+  "const field %0 may already be initialized here">;
+def err_cx_init_defer_initializes : Error<
+  "a deferred block cannot %select{initialize|assign const}1 field %0">;
+def err_cx_delegation_outside_init : Error<
+  "'self.init' can only be called in an initializer">;
+def err_cx_delegation_before : Error<
+  "'self' is used before 'self.init' is called">;
+def err_cx_delegation_twice : Error<
+  "'self.init' may already have been called here">;
+def err_cx_delegation_missing : Error<
+  "initializer %select{returns|ends}0 without calling 'self.init'">;
+def err_cx_delegation_in_defer : Error<
+  "'self.init' cannot be called in a deferred block">;
 
 def err_cx_continuation_adds_field : Error<
   "a continuation of %0 cannot add a stored field">;

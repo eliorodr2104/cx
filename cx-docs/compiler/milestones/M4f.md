@@ -137,22 +137,17 @@ anyway, so the position was free.
 
 ## Known limitations
 
-- **No definite-initialization analysis.** A field the initializer does not
-  write reads as zero rather than being diagnosed. `initializers.md` asks for
-  "every successful initializer must establish every required stored field"
-  and explicitly defers the design; zero is the interim, and it is chosen over
-  indeterminate storage rather than over a diagnostic.
-- **No delegation.** `init(...)` inside an initializer body does not call
-  another one; `initializers.md` defers that with the same design.
+- ~~**No definite-initialization analysis.**~~ Supplied by [M7b](M7b.md):
+  every path initializes every field before an initializer leaves.
+- ~~**No delegation.**~~ Supplied by [M7b](M7b.md): `self.init(...)`.
 - **No `throw`ing initializers.** `init(...) throw(E)` belongs with M13.
 - **No method call on a temporary.** `Rect(2).area()` is rejected, because the
   receiver is passed by address and a constructed value is a prvalue. This is
   not specific to initializers: `make().area()` on any function returning a
   struct is rejected the same way, and it belongs with the writeback and
   materialization work in G08/M14.
-- **C brace initialization is unaffected.** `Rect r = { 3, 4 };` still works on
-  a type with an initializer. Suppressing it would change C behavior for a C
-  form, which `structs.md` does not ask for.
+- ~~**C brace initialization is unaffected.**~~ Closed by [M7b](M7b.md): a type
+  with an initializer is constructed with `Type(...)`, not with braces.
 
 ## Runnable demonstration
 

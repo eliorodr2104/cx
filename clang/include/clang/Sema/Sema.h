@@ -4528,6 +4528,25 @@ public:
 
   /// Whether \p FD is a Cx initializer, the `init` of its record.
   bool isCxInitializer(const FunctionDecl *FD) const;
+  /// The first custom initializer \p RD declares, or null.
+  FunctionDecl *getCxFirstInitializer(const RecordDecl *RD) const;
+  /// Check that an initializer's body initializes every field of `self` on
+  /// every path, and delegates exactly once if it delegates.
+  void CheckCxDefiniteInitialization(FunctionDecl *FD, Stmt *Body);
+  /// Whether \p E is a const field of `self` written inside an initializer,
+  /// which is that field's initialization.
+  bool isCxInitConstFieldWrite(const Expr *E);
+  /// The initializer of \p RD that these labels and arguments select;
+  /// \p AllArgs[0] is the receiver. Diagnoses and returns null otherwise.
+  FunctionDecl *resolveCxInit(RecordDecl *RD, QualType T, SourceLocation Loc,
+                              ArrayRef<const IdentifierInfo *> Labels,
+                              MutableArrayRef<Expr *> AllArgs);
+  /// `self.init(...)` inside an initializer.
+  ExprResult ActOnCxInitDelegation(Expr *Self, SourceLocation InitLoc,
+                                   SourceLocation LParenLoc,
+                                   ArrayRef<const IdentifierInfo *> Labels,
+                                   ArrayRef<SourceLocation> LabelLocs,
+                                   MultiExprArg Args, SourceLocation RParenLoc);
 
   /// Build the construction of \p T through one of its custom initializers:
   /// an object holding the declaration defaults, the selected initializer run

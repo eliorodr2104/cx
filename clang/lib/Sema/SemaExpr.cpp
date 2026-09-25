@@ -14417,6 +14417,11 @@ static bool CheckForModifiableLvalue(Expr *E, SourceLocation Loc, Sema &S) {
   if (IsLV == Expr::MLV_Valid)
     return false;
 
+  // Cx: an initializer's assignment to a const field of `self` is that
+  // field's initialization; definite initialization rejects a second one.
+  if (IsLV == Expr::MLV_ConstQualified && S.isCxInitConstFieldWrite(E))
+    return false;
+
   // Cx: the receiver of a `~mutating` method is const because of the promise
   // the method made, so say that rather than talking about `self`'s type.
   if (S.DiagnoseCxNonMutatingWrite(E, OrigLoc))

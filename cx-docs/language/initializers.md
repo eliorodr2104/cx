@@ -68,13 +68,100 @@ observable effects are not silently reordered to match field order.
 The implementation must distinguish first initialization from assignment to an
 already initialized field. Defaults execute according to the automatic initialization
 phase; overwriting a managed default performs normal assignment cleanup.
-Rules for earlier-field references in defaults and initializer delegation need a
-precise definite-initialization design before implementation.
+Whether a default may refer to an earlier field is still open.
 
-Every successful initializer must establish every required stored field. Before
-that point, `self.field` may participate in initialization, but `self` must not escape
-or be used as a fully initialized object. Cx must not fill non-nil class fields with
-null simply to avoid a diagnostic.
+## Definite initialization
+
+Every successful initializer must establish every stored field. Cx must not fill
+non-nil class fields with null simply to avoid a diagnostic.
+
+```c
+struct Rect {
+    float width
+    float height
+
+    init(float side) {
+        if (side > 0) {
+            width = side
+            return          // error: 'height' is not initialized
+        }
+        width = 1
+        height = width      // width is initialized on this path
+    }
+}
+```
+
+- **What initializes a field.** A declaration default, or an assignment of the whole
+  field, `field = value` or `self.field = value`. A partial write such as
+  `origin.x = 0` does not initialize `origin`, and neither does passing `&field` to a
+  function; both are errors while the field is uninitialized.
+- **Every path.** A field is initialized at a point only if every path reaching it
+  initializes it: after `if`/`else` both branches must, and a field assigned only
+  inside a loop is not initialized after it. Every exit, `return` or the closing
+  brace, must have every field initialized.
+- **Reads.** Reading a field that is not yet initialized is an error.
+- **Using `self`.** Until every field is initialized, `self` may only have its fields
+  assigned or read: calling a method on it, passing `self` or `&self`, and copying
+  `*self` are errors.
+- **`const` fields.** An initializer may assign a `const` field once on each path;
+  that assignment is its initialization. A second assignment is an error.
+- **Array and aggregate fields** cannot be assigned whole in C, so they are
+  initialized by a default, including a braced one: `int counts[4] = {}`,
+  `Point origin = {1, 2}`. Once initialized, their elements are ordinary writes.
+- **Anonymous members.** The members of an anonymous struct are fields of their
+  own; an anonymous union is initialized once any one of its members is, and any of
+  its members may then be read.
+
+### `defer` in an initializer
+
+A deferred block may use `self` and its fields only where they are already
+initialized when the `defer` is registered: a field initialized then is still
+initialized when the block runs. A deferred block may reassign an initialized field
+but cannot initialize one, nor assign a `const` field.
+
+```c
+init(char* path) {
+    handle = fopen(path, "r")
+    defer { log(handle) }       // handle is initialized here
+    ...
+}
+```
+
+## Construction goes through `init`
+
+A value of a type with a custom initializer is made by `Type(...)`, not by braces,
+at any depth:
+
+```c
+Rect r = { 3, 4 }             // error: Rect has an initializer
+Frame f = { { 3, 4 }, 1 }     // error on the Rect member
+Frame g = { Rect(3, 4), 1 }   // ok
+```
+
+Copying an existing value and declaring a variable without an initializer stay C.
+Implicit zero-initialization also stays C: static storage, and the members a braced
+initializer leaves out, hold zero without running an initializer.
+
+## Delegation
+
+An initializer may delegate to another initializer of the same type with
+`self.init(...)`, which is resolved like any construction of the type.
+
+```c
+init(float side) {
+    if (side < 0) side = 0
+    self.init(width: side, height: side)
+    log(self.area())            // self is complete here
+}
+```
+
+- Every path through a delegating initializer calls `self.init` exactly once.
+- Before that call, `self` is not used at all, not even to assign a field; the
+  arguments may use parameters and locals.
+- After it, `self` is fully initialized.
+- Declaration defaults are applied once, by the construction, not again by the
+  delegated call.
+- `self.init` outside an initializer is an error.
 
 ## Throwing initialization
 

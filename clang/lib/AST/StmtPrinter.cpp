@@ -1971,7 +1971,7 @@ void StmtPrinter::PrintCallArgs(CallExpr *Call) {
 void StmtPrinter::VisitCallExpr(CallExpr *Call) {
   // Cx: a method call is written on its receiver, which the call passes as its
   // first argument, and a call to a Cx function writes the labels its callee
-  // declares. An initializer is only reached through construction.
+  // declares. An initializer is reached through construction or delegation.
   const FunctionDecl *FD = Call->getDirectCallee();
   bool CxCall = FD && (FD->hasAttr<CxMethodAttr>() || FD->hasAttr<CxLinkageAttr>());
   if (!CxCall) {
@@ -1982,9 +1982,16 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
     return;
   }
 
+  // `self.init(...)` in an initializer delegates, so it is written on `self`.
+  auto IsSelf = [](const Expr *E) {
+    const auto *DRE = dyn_cast<DeclRefExpr>(E->IgnoreImpCasts());
+    const auto *P = DRE ? dyn_cast<ParmVarDecl>(DRE->getDecl()) : nullptr;
+    return P && P->isImplicit() && P->getName() == "self";
+  };
   unsigned First = 0;
   if (FD->hasAttr<CxMethodAttr>() && Call->getNumArgs() &&
-      FD->getDeclName().isIdentifier() && FD->getName() != "init") {
+      FD->getDeclName().isIdentifier() &&
+      (FD->getName() != "init" || IsSelf(Call->getArg(0)))) {
     Expr *Self = Call->getArg(0)->IgnoreImpCasts();
     bool ThroughPointer = true;
     if (auto *UO = dyn_cast<UnaryOperator>(Self);
@@ -2188,7 +2195,41 @@ void StmtPrinter::VisitAddrLabelExpr(AddrLabelExpr *Node) {
   OS << "&&" << Node->getLabel()->getName();
 }
 
+/// Cx: the initializer call of a construction `T(...)`, which is lowered to
+/// `({ T __cx_object = defaults; init(&__cx_object, ...); __cx_object; })`.
+static const CallExpr *getCxConstructionCall(const StmtExpr *E) {
+  const CompoundStmt *CS = E->getSubStmt();
+  if (CS->size() != 3)
+    return nullptr;
+  const auto *DS = dyn_cast<DeclStmt>(CS->body_front());
+  const auto *VD =
+      DS && DS->isSingleDecl() ? dyn_cast<VarDecl>(DS->getSingleDecl()) : nullptr;
+  if (!VD || !VD->isImplicit() || VD->getName() != "__cx_object")
+    return nullptr;
+  const auto *Call = dyn_cast<CallExpr>(CS->body_begin()[1]);
+  const FunctionDecl *FD = Call ? Call->getDirectCallee() : nullptr;
+  if (!FD || !FD->hasAttr<CxMethodAttr>() || !FD->getDeclName().isIdentifier() ||
+      FD->getName() != "init")
+    return nullptr;
+  return Call;
+}
+
 void StmtPrinter::VisitStmtExpr(StmtExpr *E) {
+  if (const CallExpr *Call = getCxConstructionCall(E)) {
+    const FunctionDecl *FD = Call->getDirectCallee();
+    E->getType().getUnqualifiedType().print(OS, Policy);
+    OS << "(";
+    for (unsigned I = 1, N = Call->getNumArgs(); I != N; ++I) {
+      if (I != 1)
+        OS << ", ";
+      if (I < FD->getNumParams())
+        if (const auto *L = FD->getParamDecl(I)->getAttr<CxArgumentLabelAttr>())
+          OS << L->getLabel()->getName() << ": ";
+      PrintExpr(const_cast<Expr *>(Call->getArg(I)));
+    }
+    OS << ")";
+    return;
+  }
   OS << "(";
   PrintRawCompoundStmt(E->getSubStmt());
   OS << ")";

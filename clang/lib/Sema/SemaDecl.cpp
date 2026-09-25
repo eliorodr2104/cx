@@ -16819,6 +16819,11 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body, bool IsInstantiation,
       CheckCoroutineWrapper(FD);
   }
 
+  // Cx: an initializer must initialize every field on every path.
+  if (getLangOpts().CX && FD && Body && isCxInitializer(FD) &&
+      !FD->isInvalidDecl() && !FSI->hasUnrecoverableErrorOccurred())
+    CheckCxDefiniteInitialization(FD, Body);
+
   // Diagnose invalid SYCL kernel entry point function declarations
   // and build SYCLKernelCallStmts for valid ones.
   if (FD && !FD->isInvalidDecl() && FD->hasAttr<SYCLKernelEntryPointAttr>()) {

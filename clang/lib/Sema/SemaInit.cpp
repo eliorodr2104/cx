@@ -2413,6 +2413,20 @@ void InitListChecker::CheckStructUnionTypes(
   // is checked once the list has been matched against the fields, below.
   bool CheckCxAccess = !VerifyOnly && SemaRef.getLangOpts().CX &&
                        !SemaRef.CxBuildingConstruction;
+
+  // Cx: a type with an initializer is only made by running one, so braces,
+  // written or elided, cannot build it. Members a list leaves out are still
+  // zero, as static storage is.
+  if (SemaRef.getLangOpts().CX && !SemaRef.CxBuildingConstruction)
+    if (FunctionDecl *Init = SemaRef.getCxFirstInitializer(RD)) {
+      if (!VerifyOnly) {
+        SemaRef.Diag(IList->getBeginLoc(), diag::err_cx_braces_with_init)
+            << RD << RD->getName();
+        SemaRef.Diag(Init->getLocation(), diag::note_cx_initializer_declared);
+      }
+      hadError = true;
+      return;
+    }
   if (CheckCxAccess) {
     for (const FieldDecl *FD : RD->fields())
       if (!FD->hasInClassInitializer() &&

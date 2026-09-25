@@ -1218,6 +1218,14 @@ ParsedType Sema::getCxConstructionType(const IdentifierInfo *II,
   return RT && !RT->getDecl()->hasAttr<CxPayloadEnumAttr>() ? T : nullptr;
 }
 
+FunctionDecl *Sema::getCxFirstInitializer(const RecordDecl *RD) const {
+  for (Decl *D : RD->decls())
+    if (auto *FD = dyn_cast<FunctionDecl>(D))
+      if (isCxInit(FD))
+        return FD;
+  return nullptr;
+}
+
 /// Whether \p RD declares a custom initializer, which replaces the generated
 /// memberwise surface entirely.
 static bool hasCxInitializer(const RecordDecl *RD) {
@@ -1226,6 +1234,53 @@ static bool hasCxInitializer(const RecordDecl *RD) {
       if (isCxInit(FD))
         return true;
   return false;
+}
+
+FunctionDecl *Sema::resolveCxInit(RecordDecl *RD, QualType T,
+                                  SourceLocation Loc,
+                                  ArrayRef<const IdentifierInfo *> Labels,
+                                  MutableArrayRef<Expr *> AllArgs) {
+  // The initializers are an overload set like any other; the receiver is the
+  // first argument, which is what lets the ordinary resolution apply.
+  FunctionDecl *Init = nullptr;
+  {
+    CxCallLabelScope LabelScope(*this, Labels);
+    OverloadCandidateSet Candidates(Loc, OverloadCandidateSet::CSK_Normal);
+    llvm::SmallPtrSet<const FunctionDecl *, 4> Seen;
+    for (Decl *D : RD->decls()) {
+      auto *FD = dyn_cast<FunctionDecl>(D);
+      if (!FD || !isCxInit(FD) || !Seen.insert(FD->getCanonicalDecl()).second)
+        continue;
+      AddOverloadCandidate(FD, DeclAccessPair::make(FD, FD->getAccess()),
+                           AllArgs, Candidates);
+    }
+
+    OverloadCandidateSet::iterator Best;
+    switch (Candidates.BestViableFunction(*this, Loc, Best)) {
+    case OR_Success:
+      Init = Best->Function;
+      break;
+    case OR_No_Viable_Function:
+      Candidates.NoteCandidates(
+          PartialDiagnosticAt(Loc,
+                              PDiag(diag::err_cx_no_viable_initializer) << T),
+          *this, OCD_AllCandidates, AllArgs);
+      return nullptr;
+    case OR_Ambiguous:
+      Candidates.NoteCandidates(
+          PartialDiagnosticAt(Loc,
+                              PDiag(diag::err_cx_ambiguous_initializer) << T),
+          *this, OCD_AmbiguousCandidates, AllArgs);
+      return nullptr;
+    case OR_Deleted:
+      return nullptr;
+    }
+  }
+
+  // Construction is bounded by the initializer it selects, not by the fields.
+  if (CheckCxMemberAccess(Init, Loc, /*ForWrite=*/false))
+    return nullptr;
+  return Init;
 }
 
 ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
@@ -1264,8 +1319,8 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
       Defaults.push_back(Empty);
     }
     else
-      // Until definite initialization exists, a field the initializer does
-      // not write reads as zero rather than as garbage.
+      // Every initializer writes this field before it can be read; zero
+      // keeps the padding and the bytes around it deterministic.
       Defaults.push_back(new (Context) ImplicitValueInitExpr(FD->getType()));
   }
   if (!Defaults.empty()) {
@@ -1291,45 +1346,8 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
   AllArgs.push_back(SelfArg.get());
   AllArgs.append(Args.begin(), Args.end());
 
-  // The initializers are an overload set like any other; the receiver is the
-  // first argument, which is what lets the ordinary resolution apply.
-  FunctionDecl *Init = nullptr;
-  {
-    CxCallLabelScope LabelScope(*this, Labels);
-    OverloadCandidateSet Candidates(TypeLoc, OverloadCandidateSet::CSK_Normal);
-    llvm::SmallPtrSet<const FunctionDecl *, 4> Seen;
-    for (Decl *D : RD->decls()) {
-      auto *FD = dyn_cast<FunctionDecl>(D);
-      if (!FD || !isCxInit(FD) || !Seen.insert(FD->getCanonicalDecl()).second)
-        continue;
-      AddOverloadCandidate(FD, DeclAccessPair::make(FD, FD->getAccess()),
-                           AllArgs, Candidates);
-    }
-
-    OverloadCandidateSet::iterator Best;
-    switch (Candidates.BestViableFunction(*this, TypeLoc, Best)) {
-    case OR_Success:
-      Init = Best->Function;
-      break;
-    case OR_No_Viable_Function:
-      Candidates.NoteCandidates(
-          PartialDiagnosticAt(TypeLoc,
-                              PDiag(diag::err_cx_no_viable_initializer) << T),
-          *this, OCD_AllCandidates, AllArgs);
-      return ExprError();
-    case OR_Ambiguous:
-      Candidates.NoteCandidates(
-          PartialDiagnosticAt(TypeLoc,
-                              PDiag(diag::err_cx_ambiguous_initializer) << T),
-          *this, OCD_AmbiguousCandidates, AllArgs);
-      return ExprError();
-    case OR_Deleted:
-      return ExprError();
-    }
-  }
-
-  // Construction is bounded by the initializer it selects, not by the fields.
-  if (CheckCxMemberAccess(Init, TypeLoc, /*ForWrite=*/false))
+  FunctionDecl *Init = resolveCxInit(RD, T, TypeLoc, Labels, AllArgs);
+  if (!Init)
     return ExprError();
 
   ExprResult Fn = BuildDeclRefExpr(
@@ -1360,6 +1378,65 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
                        CompoundStmt::Create(Context, Body, FPOptionsOverride(),
                                             LParenLoc, RParenLoc),
                        RParenLoc, /*TemplateDepth=*/0);
+}
+
+ExprResult Sema::ActOnCxInitDelegation(Expr *Self, SourceLocation InitLoc,
+                                       SourceLocation LParenLoc,
+                                       ArrayRef<const IdentifierInfo *> Labels,
+                                       ArrayRef<SourceLocation> LabelLocs,
+                                       MultiExprArg Args,
+                                       SourceLocation RParenLoc) {
+  if (!isCxInitializer(getCurFunctionDecl())) {
+    Diag(InitLoc, diag::err_cx_delegation_outside_init);
+    return ExprError();
+  }
+  RecordDecl *RD = getCxReceiverRecord();
+  if (!RD)
+    return ExprError();
+
+  // The delegated initializer runs over this one's receiver; defaults were
+  // applied once, by the construction that called this one.
+  SmallVector<Expr *, 8> AllArgs;
+  AllArgs.push_back(Self);
+  AllArgs.append(Args.begin(), Args.end());
+  FunctionDecl *Init =
+      resolveCxInit(RD, Context.getCanonicalTagType(RD), InitLoc, Labels,
+                    AllArgs);
+  if (!Init)
+    return ExprError();
+
+  ExprResult Fn = BuildDeclRefExpr(
+      Init, Init->getType(), VK_PRValue,
+      DeclarationNameInfo(Init->getDeclName(), InitLoc),
+      NestedNameSpecifierLoc());
+  if (Fn.isInvalid())
+    return ExprError();
+  ExprResult Call =
+      BuildResolvedCallExpr(Fn.get(), Init, LParenLoc, AllArgs, RParenLoc);
+  if (!Call.isInvalid())
+    CheckCxArgumentLabels(Call.get(), Labels, LabelLocs);
+  return Call;
+}
+
+bool Sema::isCxInitConstFieldWrite(const Expr *E) {
+  if (!getLangOpts().CX || !isCxInitializer(getCurFunctionDecl()))
+    return false;
+  const auto *ME = dyn_cast<MemberExpr>(E->IgnoreParens());
+  if (!ME || !isa<FieldDecl>(ME->getMemberDecl()) ||
+      !ME->getType().isConstQualified())
+    return false;
+  // The field of an anonymous member is reached through it.
+  const Expr *Base = ME->getBase()->IgnoreParenImpCasts();
+  while (const auto *Inner = dyn_cast<MemberExpr>(Base)) {
+    const auto *FD = dyn_cast<FieldDecl>(Inner->getMemberDecl());
+    if (!FD || !FD->isAnonymousStructOrUnion())
+      return false;
+    Base = Inner->getBase()->IgnoreParenImpCasts();
+  }
+  if (const auto *UO = dyn_cast<UnaryOperator>(Base);
+      UO && UO->getOpcode() == UO_Deref)
+    Base = UO->getSubExpr();
+  return isCxSelfReference(Base);
 }
 
 ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,

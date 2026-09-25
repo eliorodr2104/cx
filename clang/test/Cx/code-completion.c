@@ -8,7 +8,7 @@ typedef struct Box {
   int shown;
   private int hidden;
 
-  init(int shown s) { shown = s; }
+  init(int shown s) { shown = s; hidden = 0; }
   void grow(int by n) { shown += n; }
   ~mutating int get(void) { return self.shown; }
 } Box;

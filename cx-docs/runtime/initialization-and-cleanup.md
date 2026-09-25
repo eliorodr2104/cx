@@ -7,9 +7,9 @@ custom initializer statements retain their written execution order; source effec
 must not be reordered to match field layout.
 
 Track not-started, initialized, and fully constructed states. Reject reads of fields
-without a value and escape/use of an incompletely initialized self. Exact delegation
-and default-expression dependencies must be specified with definite-initialization
-analysis before constructors are enabled broadly.
+without a value and escape/use of an incompletely initialized self. The rules,
+including delegation, are in [Definite initialization](../language/initializers.md#definite-initialization);
+default-expression dependencies are still open.
 
 ## Failure
 

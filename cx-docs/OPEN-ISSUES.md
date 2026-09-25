@@ -124,6 +124,11 @@ not enter a deferred block or skip a `defer` into its scope; a deferred block ca
 be left by `return`, `break`, `continue` or `goto`, nor call `setjmp`/`longjmp`; a
 `longjmp`, `exit` or signal does not run defers. See [Defer](language/defer.md).
 
+**Resolved for initializers:** default/delegation state is definite initialization:
+every path initializes every field, `self` is used only once complete, and a
+delegating initializer calls `self.init` exactly once. See
+[Initializers](language/initializers.md#definite-initialization).
+
 <a id="g08--writeback-and-mutable-views"></a>
 ## G08 - Writeback and mutable views
 

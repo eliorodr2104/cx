@@ -45,6 +45,7 @@ add_clang_library(clangSema
   SemaCodeComplete.cpp
   SemaConcept.cpp
   SemaCx.cpp
+  SemaCxInit.cpp
   SemaConsumer.cpp
   SemaCoroutine.cpp
   SemaCUDA.cpp

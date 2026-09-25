@@ -107,6 +107,8 @@ failed, 0 unexpected failures.
 - ~~**No custom `init`.**~~ Supplied by [M4f](M4f.md): `init(...)` in the
   type, `Type(...)` selecting it, and the rule that declaring one suppresses
   the generated surface.
+- ~~**Only an expression as a default.**~~ [M7b](M7b.md) adds braced defaults,
+  `int counts[4] = {}`.
 - **A default cannot mention another field.** It is an ordinary expression
   evaluated with no receiver, so `int b = a + 1;` does not work.
 - **Defaults are not used for an uninitialized declaration.** `Guarded g;`

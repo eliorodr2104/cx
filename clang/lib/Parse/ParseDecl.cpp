@@ -4937,7 +4937,17 @@ void Parser::ParseStructDeclaration(
     // surface. `= ...` on a member is not valid C.
     if (getLangOpts().CX && Tok.is(tok::equal)) {
       SourceLocation EqualLoc = ConsumeToken();
-      ExprResult Init = ParseAssignmentExpression();
+      ExprResult Init;
+      if (Tok.is(tok::l_brace)) {
+        // `int counts[4] = {}`: arrays and aggregates cannot be assigned
+        // whole, so a default is how an initializer gets them initialized.
+        auto *FD = dyn_cast_or_null<FieldDecl>(Field);
+        llvm::SaveAndRestore CxBrace(CxBraceType,
+                                     FD ? FD->getType() : QualType());
+        Init = ParseBraceInitializer();
+      } else {
+        Init = ParseAssignmentExpression();
+      }
       Actions.AddCxFieldDefault(Field, EqualLoc, Init);
     }
 

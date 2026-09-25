@@ -34,6 +34,7 @@ ones.
 - [M6d: Pattern matching](M6d.md): **Completed**
 - [M6e: Option sets](M6e.md): **Completed**
 - [M7a: `defer`](M7a.md): **Completed**
+- [M7b: Definite initialization and delegation](M7b.md): **Completed**
 
 ## Hardening passes
 

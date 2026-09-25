@@ -93,7 +93,8 @@ Implemented and tested so far:
 - source ownership through `#module`
 - Cx linkage, argument labels, overloads, and compound references
 - struct methods, `self`, `~mutating`, continuations, and access control
-- generated construction, field defaults, and custom initializers
+- generated construction, field defaults, and custom initializers checked for
+  definite initialization, with delegation
 - tuple types, literals, and destructuring
 - raw and simple enums with scoped cases, `.case` syntax, and `rawValue`
 - payload enums whose cases carry tuple payloads
