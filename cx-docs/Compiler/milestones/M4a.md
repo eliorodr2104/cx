@@ -1,4 +1,4 @@
-# M4a — Struct methods, `self` and `~mutating`
+# M4a: Struct methods, `self` and `~mutating`
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -35,7 +35,7 @@ c.current();
   stored field, no per-instance method pointer and no vtable. A `_Static_assert`
   in the tests pins that the layout is unchanged.
 - `self` is the receiver; there is no `this`. `self.field` is permitted, and it
-  is the implicit receiver only — this does **not** establish a general `.`
+  is the implicit receiver only: this does **not** establish a general `.`
   shorthand for raw pointers, as `language/pointers.md` requires.
 - An unqualified name inside a method body resolves against the receiver when a
   local parameter or binding does not shadow it.
@@ -94,14 +94,14 @@ None.
 
 `clang/test/Cx/`:
 
-- `struct-methods.c` — declaration and definition, `self.field`, an unqualified
+- `struct-methods.c`: declaration and definition, `self.field`, an unqualified
   field, a method using a field declared after it, the call passing the
   receiver's address, the symbols, a `_Static_assert` that the layout is
   unchanged, and plain C rejecting the member.
-- `struct-methods-mutating.c` — `~mutating` called on a constant value, a
+- `struct-methods-mutating.c`: `~mutating` called on a constant value, a
   mutating method rejected there with a note suggesting `~mutating`, and a
   `~mutating` body rejected for writing through `self`.
-- `struct-methods-diags.c` — a bare method reference and an assignment of one
+- `struct-methods-diags.c`: a bare method reference and an assignment of one
   to a function pointer; `.` still rejected on an ordinary pointer.
 
 Verification run on this checkout: `clang/test` 48933 passed, 30 expectedly

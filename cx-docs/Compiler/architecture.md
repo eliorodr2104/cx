@@ -6,10 +6,9 @@ Cx extends the Clang C frontend. It is not a source-to-C transpiler and does not
 implement a parallel C parser. Existing C behavior remains the baseline under the
 selected supported C/GNU dialect and target.
 
-`clangx` is the current driver working name. `clang -x cx` is the planned explicit
-interface in the fork; neither command is claimed to exist in the user's current
-checkout. Record the actual upstream SHA, patch baseline, target, and build options
-before implementation. No release tag from earlier conversation is assumed verified.
+`clangx` is the current driver name, and `clang -x cx` selects Cx explicitly. Both
+interfaces are implemented in this fork. The [M0 record](milestones/M0.md) identifies
+the upstream revision, target, build configuration, and validation evidence.
 
 ## Pipeline
 

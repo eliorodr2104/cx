@@ -1,9 +1,9 @@
 # External Technical References
 
-Consulted during consolidation on 2026-09-20. These primary references support facts
-about C/Clang/LLVM and examples of existing API constraints. They do not define Cx,
-and an online version is not assumed to match the user's local fork. Record the
-actual checkout SHA before using implementation-specific APIs.
+These primary references support facts about C, Clang, LLVM, and existing API
+constraints. They do not define Cx, and current online documentation may differ from
+the pinned fork. Record the checkout revision before relying on implementation-specific
+APIs.
 
 ## R1 - Clang internals
 
@@ -26,7 +26,7 @@ choices, not claims that every proposed node already exists.
 [Clang command guide](https://clang.llvm.org/docs/CommandGuide/clang.html)
 
 Reference for input-language selection, compilation actions, and the separation of
-driver/frontend behavior. Cx flags described in this pack are proposed fork interfaces.
+driver and frontend behavior. Cx-specific flags are defined by this fork.
 
 ## R4 - C23 enum compatibility
 
@@ -96,8 +96,8 @@ An existing API example with scoped pointer lifetime and restricted container ac
 It illustrates why Cx mutable COW views need a full lifetime/exclusivity contract,
 not merely a pointer-returning convenience method.
 
-## Project sources
+## Cx authority
 
-The Cx design authority is the user's decisions in the conversation and the attached
-`language-updated.zip` and `Cx-Compiler.zip` baselines. This pack contains newly written
-project documentation, not a reproduction of these external manuals.
+The [decision register](DECISIONS.md), [open design gates](OPEN-ISSUES.md), and
+[milestone records](Compiler/milestones/README.md) define Cx-specific behavior. The
+external sources above provide technical context but do not override project decisions.

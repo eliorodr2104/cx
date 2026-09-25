@@ -1,4 +1,4 @@
-# M3a — Cx linkage and experimental mangling
+# M3a: Cx linkage and experimental mangling
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -46,7 +46,7 @@ static int helper(int v);       // _ZL20_Cx0$Geometry$helperi
 The `_Cx0` version prefix is deliberate. The encoding is experimental and is
 not a distribution promise; it exists so that distinct Cx entities have
 distinct deterministic symbols, which is what M3b's labels and M3c's overloads
-need in order to mean anything.
+need to have defined behavior.
 
 Identity inputs used today: module, base name, parameter types. Local parameter
 names, paths, line numbers and build directories are not identity, as required.
@@ -67,9 +67,9 @@ Every C/GNU standard, as in M0.
 The marker is an attribute rather than a recomputation from the ownership map
 for two reasons. It has to survive serialization, because M2 does not serialize
 ownership and a declaration loaded from a PCH would otherwise silently lose its
-identity. And it has to be *decided once*, at the first declaration, rather than
-re-derived per declaration from whichever file that declaration sits in —
-which is exactly the C-identity rule above.
+identity. It has to be *decided once*, at the first declaration, rather than
+re-derived from the file of each later declaration. This is the C-identity rule
+above.
 
 `AddCxLinkage` runs after merging so that `getPreviousDecl()` is meaningful. An
 entity with a previous declaration copies that declaration's answer and never
@@ -77,8 +77,8 @@ consults its own file; only a genuinely new declaration asks the ownership map.
 
 ## AST and Sema changes
 
-One implicit attribute. No new AST node, no new type, no change to overload or
-lookup behavior — that is M3c.
+One implicit attribute. No new AST node, no new type, and no change to overload or
+lookup behavior. M3c covers lookup.
 
 ## Target and runtime requirements
 
@@ -89,14 +89,14 @@ symbol names.
 
 `clang/test/Cx/`:
 
-- `linkage-mangling.c` — module, base name and parameter types in the symbol;
+- `linkage-mangling.c`: module, base name and parameter types in the symbol;
   a `static` function mangled with the internal marker; `main` unmangled; the
   same file untouched both as plain C and in Cx mode without `#module`.
-- `linkage-c-identity.c` — an entity declared in an ordinary C header keeps its
+- `linkage-c-identity.c`: an entity declared in an ordinary C header keeps its
   C symbol when defined inside a module, checked with `--implicit-check-not` so
   the Cx name cannot appear anywhere in the output; an entity declared in an
   owned header keeps its Cx symbol; a new function in the owned file gets one.
-- `linkage-separate-tu.c` — producer and consumer compiled separately agree on
+- `linkage-separate-tu.c`: producer and consumer compiled separately agree on
   the symbol, and an unowned implementation file inherits the header's identity.
 
 Verification run on this checkout: `clang/test` 48921 passed, 30 expectedly

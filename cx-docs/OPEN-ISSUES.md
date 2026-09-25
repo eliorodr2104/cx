@@ -28,8 +28,8 @@ comparison. Modern raw-enum opt-in spelling remains a surface decision.
 **Before:** final labels/initializer/payload API (M3-M6).
 
 Ordinary one-name parameters remain positional; two names introduce an explicit label.
-Clarify the requested convenience when external and local names coincide, and whether
-any declared label is optionally omittable at calls. Do not silently choose that policy.
+Decide whether matching external and local names can use a shorter declaration, and
+whether a declared label can be omitted at a call. Do not infer either policy.
 Generated memberwise calls can expose field names without literal `int x x` source
 parameters; decide whether they also accept positional calls. Align enum payload
 naming, callable labels, trailing closure label omission, and default arguments.
@@ -41,10 +41,10 @@ naming, callable labels, trailing closure label omission, and default arguments.
 
 **Before:** optional type/literal implementation (M10).
 
-The user explicitly requested optional String behavior and accepted Optional<T>.
-Generalizing `?` to every value type was a subsequent suggestion. Confirm whether it
-is the desired general model rather than a special String exception. Preserve the
-raw-pointer decision and distinguish explicit Optional<T*> from a nullable T*.
+Optional String behavior and `Optional<T>` are accepted directions. General `T?`
+sugar for every value type remains provisional. Decide whether it is the language-wide
+model or a narrower String facility. Preserve raw-pointer behavior and distinguish
+explicit `Optional<T*>` from a nullable `T*`.
 Choose checked extraction, chaining/defaulting, and any force/try-optional operators.
 Nested optional absence must not collapse accidentally.
 
@@ -158,7 +158,7 @@ inference, and C-string pointer lifetime/termination/embedded-NUL behavior.
 
 A scoped const-char callback is a safe baseline proposal, not a final acceptance of
 implicit casting. No StringView type is included. General integer aliases and Any as
-an opaque pointer/value remain unresolved earlier ideas, not silently added primitives.
+an opaque pointer/value remain possible designs, not language primitives.
 
 <a id="g11--collections-and-algorithms"></a>
 ## G11 - Collections and algorithms

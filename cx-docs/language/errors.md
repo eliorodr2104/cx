@@ -111,4 +111,4 @@ errors is made for every workload.
 
 `Result<T, E>` remains an ordinary library value for stored/composed outcomes.
 `try?`, force-try, multiple typed error lists, and rethrowing-effect inference are
-not implicitly accepted by this document.
+not part of the current design.

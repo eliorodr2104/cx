@@ -1,59 +1,51 @@
-# Cx Design Documentation
+# Cx Documentation
 
-**Revision:** 2026-09-20 consolidated draft.
+Cx extends Clang's C frontend with opt-in language features while preserving C source
+files, preprocessing, toolchain integration, and interoperability. These documents
+define the language, explain the compiler work, and separate implemented behavior
+from planned features.
 
-This is the current Cx design baseline: updated language/compiler documentation plus
-source-model rationale, ABI/runtime contracts, and a standard-library proposal.
-Everything is written in English. The canonical language name is **Cx**.
+Start with the language guide if you want to write Cx. Use the compiler and milestone
+documents when changing the frontend.
 
-The pack is sufficient to begin incremental compiler work. It is not a claim that
-Cx is already implemented, that its grammar/ABI is fully frozen, or that every later
-assistant suggestion has been approved by the user.
+## Start Here
 
-## Start here
+1. [Language Guide](language/README.md) describes Cx syntax and semantics.
+2. [Milestone Records](Compiler/milestones/README.md) lists implemented compiler work.
+3. [Implementation Roadmap](Compiler/implementation-roadmap.md) shows dependencies and
+   later milestones.
+4. [Decisions](DECISIONS.md) records accepted directions and provisional contracts.
+5. [Open Design Gates](OPEN-ISSUES.md) lists decisions required before specific
+   features can ship.
 
-1. [Decisions and status](DECISIONS.md): accepted design, baseline representation,
-   proposals, implementation gates, and deliberately future work.
-2. [Open issues by feature](OPEN-ISSUES.md): decisions needed before the affected
-   implementation, not prerequisites to starting M0.
-3. [Implementation roadmap](Compiler/implementation-roadmap.md): dependency-correct
-   vertical slices and their acceptance requirements.
+## Documentation Areas
 
-## Areas
-
-| Directory | Purpose |
+| Area | Use It For |
 | --- | --- |
-| [language](language/README.md) | Source forms and language meaning |
-| [Compiler](Compiler/README.md) | Clang integration, analysis, lowering, tests, milestones |
-| [design](design/README.md) | Why the selected direction was chosen; consequences and gates |
-| [abi](abi/README.md) | Materialized values, calls, symbols, errors, C bridges and artifacts |
-| [runtime](runtime/README.md) | Ownership, weak references, construction and cleanup |
-| [stdlib](stdlib/README.md) | Optional/Result, Span, text, collections and algorithms |
-| [dev](dev/README.md) | Local shell helpers for building and running the fork |
+| [Language](language/README.md) | Syntax, type rules, source behavior, and C compatibility |
+| [Compiler](Compiler/README.md) | Clang integration, analysis, lowering, testing, and milestones |
+| [Design](design/README.md) | Design choices, alternatives, consequences, and unresolved gates |
+| [ABI](abi/README.md) | Values, calls, symbols, errors, C bridges, and build artifacts |
+| [Runtime](runtime/README.md) | Ownership, weak references, initialization, and cleanup |
+| [Standard Library](stdlib/README.md) | Collections, text, ranges, protocols, Optional, Result, and Span |
+| [Development Helpers](dev/README.md) | Local commands for building, testing, and editor integration |
 
-`Compiler` intentionally keeps the capitalized folder name requested for the existing
-pack. Other directory names are lowercase. Internal links use that exact case.
+The capitalized `Compiler` directory is retained for path compatibility. Use its exact
+case in links and scripts.
 
-## Installation
+## How to Read Status
 
-The archive contains a top-level `cx-docs/` directory. Extract it alongside or merge
-it into the existing `cx-docs` in the repository. Save/commit current local documents
-before replacement. The pack does not modify compiler source or the local repository.
+Milestone records describe compiler behavior that has been implemented and tested in
+this fork. Design chapters can also describe later milestones. When the two differ,
+the milestone record is the source of truth for current implementation status.
 
-All 38 baseline Markdown filenames in language/Compiler are retained and updated.
-A separate changes diff uses paths relative to `cx-docs`; local edits may require a
-manual merge. `manifest.json` records source/archive checksums and output file hashes.
+Code examples in future-facing chapters illustrate the intended design. A chapter
+must say when syntax or behavior is proposed, gated, or incomplete. Performance
+claims require a recorded benchmark; correctness and lifetime rules do not depend on
+benchmark results.
 
-## Reading examples
+## Reference Documents
 
-Code snippets describe the target Cx design. They are not asserted to compile today.
-Small snippets may omit surrounding declarations/includes. Proposed or gated syntax
-is identified in its chapter. Ordinary C examples retain C meaning.
-
-Benchmarks are [implementation checkpoints](Compiler/benchmarking.md); no performance
-results are invented. Correctness-sensitive lifetime/grammar decisions are gates, not
-questions left to a benchmark.
-
-[CHANGELOG](CHANGELOG.md) summarizes changes and corrections.
-[VALIDATION](VALIDATION.md) explains checks and limitations.
-[SOURCES](SOURCES.md) collects primary technical references.
+- [Change History](CHANGELOG.md)
+- [Documentation Validation](VALIDATION.md)
+- [Technical Sources](SOURCES.md)

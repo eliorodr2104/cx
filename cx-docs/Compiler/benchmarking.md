@@ -1,7 +1,7 @@
 # Implementation Benchmark Checkpoints
 
-Benchmarks are performed when real implementations exist. They are not prerequisites
-to finishing these design notes, and this pack contains no measured Cx performance.
+Benchmark only implemented features with a defined correctness contract. Design
+documents do not contain performance claims unless they link to reproducible results.
 
 ## Rules
 
@@ -19,7 +19,7 @@ Report variance and realistic workload mixes, not only the most favorable microc
 | B05 Generic specialization | M9/M15/M16 | Monomorphized vs shared entries, witness calls, code size, build/cache time, duplicated specialization elimination |
 | B06 COW/value views | M14/M18 | Copy/share/mutate workloads; scoped buffer access, retained substrings, allocation and copying counts |
 | B07 Enum layout | M6/M16 | Explicit discriminant vs valid niches; over-aligned payloads; copy/destroy/switch; C export representation |
-| B08 Real C port | M19 | User-provided dictionary unchanged under C/Cx, then opt-in Cx layers; functional tests before throughput/latency/code-size comparisons |
+| B08 Real C port | M19 | Selected C dictionary unchanged under C/Cx, then opt-in Cx layers; functional tests before throughput, latency, and code-size comparisons |
 
 ## Performance invariants vs heuristics
 

@@ -1,14 +1,14 @@
 # Decision Register
 
-Revision: 2026-09-20 consolidated draft.
+Last reviewed: 2026-09-25.
 
-This register distinguishes user-approved directions from subsequent suggestions and
-from contracts that must be completed at the affected implementation milestone.
-It is not a statement of implementation status in the local repository.
+This register separates accepted product direction from provisional design and from
+contracts that must be completed at a specific implementation milestone. Use the
+[milestone records](Compiler/milestones/README.md) for current implementation status.
 
 ## Status vocabulary
 
-- **Accepted:** a direction explicitly established during the design conversation.
+- **Accepted:** established product direction.
 - **Baseline:** an initial representation/strategy, not a stable universal ABI.
 - **Proposed:** a later suggestion not unambiguously approved in its complete form.
 - **Gate:** a semantic/compatibility decision required before implementing that feature.
@@ -36,7 +36,7 @@ It is not a statement of implementation status in the local repository.
 | Source model | Primary fields/API; reopened implementation; private new helpers | Accepted; G04 validation |
 | Access | public/internal/private on struct/class members; setter restrictions | Accepted; G08 mutation paths |
 | Modules | Optional `#module`, normal `#include`, owned declarations | Accepted; G09 provenance/build rules |
-| Init | Auto when no user init; any custom init suppresses generated constructors | Accepted latest decision |
+| Init | Auto when no custom init exists; any custom init suppresses generated constructors | Accepted |
 | Deinit | Automatic member cleanup plus optional non-throwing user hook | Accepted |
 | Classes | ARC by default; manual reference counting also supported | Accepted semantics; manual spelling pending |
 | Properties | Implicit stored access; getter-only shorthand; explicit get/set | Accepted |
@@ -49,7 +49,7 @@ It is not a statement of implementation status in the local repository.
 | PointerTag | Implicit OptionSet, low bits from alignment, no wrapper | Accepted direction; G05 boundaries |
 | Library | Optional, Result, Span, text, dynamic containers, ranges, protocols, Set/Dictionary | Accepted direction |
 | Optional text | String should support nil-capable optional use | Accepted direction |
-| General `T?` | Make `?` sugar for Optional on arbitrary non-raw value types | Proposed, not assumed approved for all types |
+| General `T?` | Make `?` sugar for Optional on arbitrary non-raw value types | Proposed; not part of the accepted design |
 | Dynamic array name | Array vs List vs first-class StaticArray naming | Proposed / unresolved |
 | C string conversion | Easy const-char interface; exact cast/temporary lifetime | Proposed / G10 |
 | Callables ABI | Entry + context, optimization can eliminate materialization | Baseline |

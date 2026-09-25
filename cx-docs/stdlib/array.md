@@ -1,8 +1,8 @@
 # Contiguous Dynamic Collection
 
-**Naming status:** `Array<T>` is the working name, not a final resolution of the user's
-Array/List/StaticArray preference. This document defines the container behavior
-independently of that name.
+**Naming status:** `Array<T>` is the working name. The final relationship between
+Array, List, and StaticArray remains open. The behavior below does not depend on the
+final name.
 
 ## Distinct categories
 

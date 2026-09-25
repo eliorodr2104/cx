@@ -14,7 +14,7 @@ Add Optional, Result, Span, owning dynamic collections, String/StaticString, ran
 
 ## Consequences
 
-Span is not an owning array. Filter can allocate. COW needs exclusivity for mutable views. C strings need termination/lifetime rules; a cast cannot always be free. The described C dictionary is a future unchanged-code portability case study, not a port already performed.
+Span is not an owning array. Filter can allocate. COW needs exclusivity for mutable views. C strings need termination/lifetime rules; a cast cannot always be free. A selected C dictionary can provide a future unchanged-code portability case, but no port is recorded here.
 
 ## Implementation gates
 

@@ -10,7 +10,7 @@ Memberwise boilerplate should disappear, but a custom initializer should define 
 
 ## Decision
 
-Generate constructors when no user init is declared. Required fields become construction inputs; declaration defaults apply automatically. Any custom init declaration suppresses generated initializers. Init bodies can throw. Automatic field destruction remains even when a custom non-throwing deinit hook exists.
+Generate constructors when no custom init is declared. Required fields become construction inputs; declaration defaults apply automatically. Any custom init declaration suppresses generated initializers. Init bodies can throw. Automatic field destruction remains even when a custom non-throwing deinit hook exists.
 
 ## Consequences
 

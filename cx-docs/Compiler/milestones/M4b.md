@@ -1,4 +1,4 @@
-# M4b — Continuations
+# M4b: Continuations
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -89,12 +89,12 @@ None.
 
 `clang/test/Cx/`:
 
-- `continuations.c` with `Inputs/cx-counter.h` and `Inputs/cx-counter-impl.c` —
+- `continuations.c` with `Inputs/cx-counter.h` and `Inputs/cx-counter-impl.c`:
   a header declares, a separate translation unit implements, a third uses; one
   symbol per declared method, and the consumer references exactly those.
-- `continuations-diags.c` — a continuation adding a field, and a member
+- `continuations-diags.c`: a continuation adding a field, and a member
   implemented twice.
-- `continuations-ownership.c` — a type owned by another module and a type from
+- `continuations-ownership.c`: a type owned by another module and a type from
   an ordinary C header both keep C's redefinition error; a type defined in the
   same owned file is reopenable.
 

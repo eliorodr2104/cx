@@ -1,4 +1,4 @@
-# M5a — Implicit tag names
+# M5a: Implicit tag names
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -96,8 +96,8 @@ every form, as before.
 G01 asks for a regression corpus, a dialect matrix, idiom tests and `-E`
 round trips.
 
-**The corpus.** I compiled 1,828 files in `-x cx` under C89, GNU89, GNU17
-and C23, before and after this slice, and compared fingerprints of the AST
+**The corpus.** The compatibility run compiled 1,828 files in `-x cx` under C89,
+GNU89, GNU17, and C23 before and after this slice, then compared fingerprints of the AST
 dump (addresses stripped) plus the diagnostics: 7,312 comparisons. The files
 are every `.c` test in `clang/test/{C,Sema,Parser,Preprocessor,Lexer}`, plus
 one file including 40 SDK headers (`stdio.h`, `sys/stat.h`, `pthread.h`,
@@ -174,7 +174,7 @@ failed, 0 unexpected failures, with `Index/crash-recovery-modules.m` excluded
 
 - **Some positions that C rejects are still rejected**, because only the
   common ones were opened. Examples:
-  - `T (*fp)(void);` — a parenthesized declarator after a bare tag;
+  - `T (*fp)(void);`: a parenthesized declarator after a bare tag;
   - `_Generic(x, T: …)`;
   - a bare tag directly after `(` of a parameter list, `f(T)`, which C reads
     as a K&R list.

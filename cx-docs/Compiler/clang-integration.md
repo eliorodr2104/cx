@@ -14,11 +14,9 @@ assertions on, `LLVM_TARGETS_TO_BUILD=AArch64`, default triple
 
 ### Development build configuration
 
-The baseline was originally built `RelWithDebInfo`, statically. That produced a
-41 GB build tree — `-g` is emitted into every object, copied into every static
-archive and then into every tool — and relinked a 188 MB `clang` binary after
-every edit. Assertion backtraces carried function names but no `file:line`
-anyway, so the debug info was cost without benefit.
+The original static `RelWithDebInfo` build occupied 41 GB and relinked a 188 MB
+`clang` binary after each edit. Assertion backtraces showed function names but not
+source locations, so the extra debug data did not help this workflow.
 
 The development configuration is now:
 
@@ -39,31 +37,27 @@ cmake -S llvm -B build -G Ninja \
   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 ```
 
-**Assertions stay on**, and that is not negotiable for this work: the `(void)`
-crash [M4.3](milestones/M4.3.md) fixed was an assertion failure, and the
-serialization and AST invariants that Cx leans on are checked by them.
+Keep assertions enabled. The `(void)` crash fixed in
+[M4.3](milestones/M4.3.md) was an assertion failure, and assertions protect the
+serialization and AST invariants used by Cx.
 
-`LLVM_LINK_LLVM_DYLIB` and `CLANG_LINK_CLANG_DYLIB` put the LLVM and Clang
-libraries in one shared object each instead of copying them into every tool, so
-editing Sema relinks a small executable rather than a static monolith, twenty
-times over.
+`LLVM_LINK_LLVM_DYLIB` and `CLANG_LINK_CLANG_DYLIB` place the LLVM and Clang
+libraries in one shared object each. A Sema edit then relinks a small executable
+instead of copying both static libraries into every tool.
 
-`LLVM_USE_LINKER=lld` is **not** used: the `lld` on this machine comes from a
-Swift toolchain and reports *"This version of lld does not support linking for
-platform macOS"*. Xcode's own linker is used instead.
+The recorded macOS configuration uses Xcode's linker. The available `lld` comes from
+a Swift toolchain and cannot link for macOS.
 
 `ninja -C build clang clangd LTO` is the working build command. `LTO` is not a
 dependency of `clang`, but the Darwin driver passes `-lto_library` to the
 linker, so without it every link prints a harmless
 `ld: warning: ignoring -lto_library ... file does not exist`.
 
-Run **one** `llvm-lit` at a time. Two concurrent full runs are twenty parallel
-clang processes on the same build tree; they do not corrupt anything, but they
-take hours and make everything else on the machine unusable.
+Run one full `llvm-lit` process at a time. Concurrent full runs compete for the same
+build tree and can make both runs much slower.
 
-ccache is configured at 20 GB (`ccache -M 20G`). At the default 5 GB it evicted
-continuously — 5438 cleanups against a 26% hit rate — because an LLVM tree does
-not fit.
+The recorded development environment gives ccache 20 GB (`ccache -M 20G`). A 5 GB
+cache produced 5,438 cleanups and a 26 percent hit rate for this LLVM build.
 
 Anything that depends on the build *type* rather than on the source, such as a
 measured compile time, has to say which configuration produced it.

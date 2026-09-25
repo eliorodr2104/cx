@@ -18,9 +18,9 @@ Optional<int> count = .some(3)
 Optional<int> missing = .none
 ```
 
-`User?` and the requested `String?` provide nil-capable source forms. The proposed
-uniform rule `T? == Optional<T>` beyond those cases needs the explicit confirmation
-recorded in G03. This document does not silently change every raw pointer declaration.
+`User?` and `String?` provide nil-capable source forms. G03 records the proposed
+uniform rule `T? == Optional<T>` beyond those cases. Raw pointer declarations keep
+their existing meaning.
 
 `Optional<T*>` has at least the semantic states absent, present-null, and present
 non-null. Because null is already valid for T*, it cannot alone encode absence.

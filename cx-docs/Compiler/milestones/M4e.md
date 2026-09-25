@@ -1,4 +1,4 @@
-# M4e — Declaration-site field defaults
+# M4e: Declaration-site field defaults
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -13,7 +13,7 @@ empty call is available when nothing is required."*
 
 Without defaults, generated construction required **every** field, so a struct
 with a `private` field had no usable construction anywhere outside its own
-implementation — and no custom `init` exists to put in its place. The type was
+implementation, and no custom `init` existed to take its place. The type was
 a dead end, not a design.
 
 Defaults resolve that cleanly: a field with one is **not part of the
@@ -93,7 +93,7 @@ whose in-class initializer is set.
 
 ## Tests
 
-`clang/test/Cx/field-defaults.c` — a private field with a default leaving the
+`clang/test/Cx/field-defaults.c`: a private field with a default leaving the
 type constructible; skipping some defaulted fields and giving others; an empty
 call; C brace initialization agreeing with the generated call; a field without
 a default still required; the private field still unwritable when named. Plain

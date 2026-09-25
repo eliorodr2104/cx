@@ -69,7 +69,7 @@ See [Nullability](nullability.md) and [Weak References](../runtime/weak-referenc
 
 The manual-RC variant retains the same reference-counting concept, but ownership
 acquisition/release is explicit. Its declaration spelling remains unresolved;
-`unmanaged`, `~arc`, and other discussed alternatives are not silently selected.
+`unmanaged`, `~arc`, and other alternative spellings remain unselected.
 
 ## Inheritance and metadata
 

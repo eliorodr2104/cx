@@ -70,5 +70,5 @@ Performance experiments are attached to implementation milestones in
 such as no method storage in a struct. Do not claim that all optimized closure calls
 must always inline.
 
-This documentation pack itself was checked as documents, not compiled/executed as a
-Cx implementation. See [VALIDATION](../VALIDATION.md).
+Editorial validation is separate from compiler execution. See
+[Documentation Validation](../VALIDATION.md).

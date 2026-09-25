@@ -39,11 +39,11 @@ Mutable variants and compound operators require normal receiver/writeback rules.
 Set complement is not automatically meaningful without a defined finite universe;
 OptionSet complement is a separate valid-bit policy.
 
-## Existing C dictionary as a case study
+## C dictionary case study
 
-The user has described an existing fast C dictionary using tagging, builtins, and
-complex structures. Its source, build, and license have not been inspected for this
-pack, and no speed claim has been verified.
+A mature C dictionary that uses tagging, compiler builtins, and complex internal
+structures is a useful compatibility case. Select a candidate only after reviewing its
+source, build, and license. Do not make performance claims before measuring it.
 
 The first acceptance step is unchanged C compiled under both baseline Clang C and
 Cx mode, with identical defined behavior. Next, add opt-in Cx wrappers/methods and

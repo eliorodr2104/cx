@@ -1,4 +1,4 @@
-# M5b — Optional semicolons
+# M5b: Optional semicolons
 
 Status: **Completed** (implemented and verified in this checkout).
 

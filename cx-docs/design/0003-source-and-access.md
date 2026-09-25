@@ -14,7 +14,7 @@ Reopen an already defined owned type to implement members. The primary definitio
 
 ## Consequences
 
-Visibility depends on declaration context, not simply filename suffix. A whole private type can still live in one `.c`. Compiler errors can propose header edits, but compilation never mutates user source. Private layout is visible in headers even when Sema prevents member access.
+Visibility depends on declaration context, not simply filename suffix. A whole private type can still live in one `.c`. Compiler diagnostics can suggest header edits, but compilation never changes source files. Private layout is visible in headers even when Sema prevents member access.
 
 ## Implementation gates
 

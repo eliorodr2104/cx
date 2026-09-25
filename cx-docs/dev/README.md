@@ -17,10 +17,8 @@ ninja -C build clang LTO
 ln -s (pwd)/cx-docs/dev/clangx.fish ~/.config/fish/functions/clangx.fish
 ```
 
-`LTO` is in that list because the driver passes `-lto_library` to the linker on
-Darwin. Without it every link prints `ld: warning: ignoring -lto_library ...
-file does not exist`. The warning is harmless -- the link succeeds -- but it is
-noise on every build.
+`LTO` is included because the Darwin driver passes `-lto_library` to the linker.
+Without it, each link reports a missing LTO library even though the link succeeds.
 
 `clangx` then works from any directory and resolves the checkout through the
 symlink, so nothing is hard-coded. On macOS it also passes the active SDK as
@@ -62,10 +60,9 @@ CompileFlags:
   Add: [-x, cx]
 ```
 
-`clangd` reads `.clangd` from a file's own directory and every directory above
-it, so one file at the root of a tree covers everything under it. An existing
-`.clangd`, anywhere up that chain, is never touched — it is yours. Keep using
-`hx` for ordinary C.
+`clangd` reads `.clangd` from a file's own directory and every parent directory, so
+one file at the root of a tree covers everything below it. The helper does not replace
+an existing `.clangd`. Use `hx` for ordinary C.
 
 Rebuild `clangd` after changing the frontend, or the editor will keep
 diagnosing against the old language rules:

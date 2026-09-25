@@ -39,4 +39,4 @@ just for syntax. Preserve the C core as a dual-build baseline when that is the g
 Measure changes in generated code, allocation, semantics, and performance during
 implementation. Do not equate a prettier source API with automatically faster code.
 
-The user's dictionary is a planned first case study, not a port already performed.
+A representative C dictionary is a planned case study. No port is recorded here.

@@ -1,4 +1,4 @@
-# M3b — Argument labels
+# M3b: Argument labels
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -52,9 +52,9 @@ and not labelling.
 [G02](../../OPEN-ISSUES.md#g02--labels-and-synthesized-construction) leaves two
 things open, and neither is implemented here:
 
-- the convenience when the external and local names coincide — there is no
+- the convenience when the external and local names coincide: there is no
   `int x x` shorthand and no single-name form that creates a label;
-- optionally omittable call labels — a declared label is always required.
+- optionally omittable call labels: a declared label is always required.
 
 ## Permitted baseline C modes
 
@@ -97,15 +97,15 @@ None.
 
 `clang/test/Cx/`:
 
-- `labels.c` — simple and complex labeled declarators, the local name in the
+- `labels.c`: simple and complex labeled declarators, the local name in the
   body, the attribute in the AST, positional parameters left alone, labeled
   calls; plain C rejects the syntax.
-- `labels-diags.c` — missing, wrong and extraneous labels, each with a note at
+- `labels-diags.c`: missing, wrong and extraneous labels, each with a note at
   the parameter; a label through a function pointer.
-- `labels-redecl.c` — a label mismatch across declarations is rejected; an
+- `labels-redecl.c`: a label mismatch across declarations is rejected; an
   agreeing redeclaration with different local names is fine and produces one
   symbol.
-- `labels-mangling.c` — labels in the symbol, `_` for unlabeled positions, a
+- `labels-mangling.c`: labels in the symbol, `_` for unlabeled positions, a
   wholly unlabeled function's symbol unchanged from M3a, and an unowned file
   keeping its C symbols.
 

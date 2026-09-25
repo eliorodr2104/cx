@@ -1,4 +1,4 @@
-# M4c — Access control
+# M4c: Access control
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -95,13 +95,13 @@ linkage or mangling: access controls source use, not identity, exactly as
 
 `clang/test/Cx/`:
 
-- `access.c` with `Inputs/cx-user.h` and `Inputs/cx-user-impl.c` — the type's
+- `access.c` with `Inputs/cx-user.h` and `Inputs/cx-user-impl.c`: the type's
   own implementation reaching every member; the owning module reaching public
   and internal but not private; another module reaching only public.
-- `access-write.c` — `=`, `+=`, `++`, `--` and mutable address-taking all
+- `access-write.c`: `=`, `+=`, `++`, `--` and mutable address-taking all
   rejected for a `private(set)` member, while reading and a const address are
   allowed.
-- `access-diags.c` — write broader than read, a repeated specifier, and
+- `access-diags.c`: write broader than read, a repeated specifier, and
   members named `private` and `internal`.
 
 Verification run on this checkout: `clang/test` 48939 passed, 30 expectedly

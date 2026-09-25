@@ -52,5 +52,6 @@ outputs, not edited source inputs. Generic C APIs require concrete wrappers/expo
 
 Differential compile/execute tests, cross-language link tests, ABI layout checks, and
 header corpus tests provide evidence. They do not prove equivalence for all programs.
-Use the user's C dictionary unchanged as a later real-world case once its actual
-source/build/license are available; it has not been inspected in this documentation.
+Use a representative C dictionary unchanged as a later compatibility case once its
+source, build, and license are available. This repository does not currently include
+that case study.

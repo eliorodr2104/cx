@@ -1,7 +1,7 @@
 # Feature and Documentation Traceability
 
-This table maps accepted design areas to implementation work. No row claims current
-implementation status in the user's fork.
+This table maps design areas to their source contracts and compiler responsibilities.
+Use the [milestone index](milestones/README.md) for implementation status.
 
 | Feature | Source contract | Main compiler responsibilities | Required interactions |
 | --- | --- | --- | --- |

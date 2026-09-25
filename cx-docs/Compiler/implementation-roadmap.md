@@ -12,7 +12,7 @@ they cannot honestly be called finished before those facilities exist.
 
 ## Milestones
 
-| ID | Deliverable | Dependencies / acceptance | Status |
+| ID | Outcome | Dependencies / acceptance | Status |
 | --- | --- | --- | --- |
 | M0 | Pinned baseline, driver mode, `-x cx`, language options | Pure C behavior, driver/PCH tests, actual SHA recorded | **Completed** ([record](milestones/M0.md)) |
 | M1 | `var`, `let`, contextual `null` | Keep semicolons initially; independent deduction and const tests | **Completed** ([record](milestones/M1.md)) |

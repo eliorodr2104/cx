@@ -1,4 +1,4 @@
-# M4d — Generated memberwise construction
+# M4d: Generated memberwise construction
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -71,12 +71,12 @@ record type.
 
 `clang/test/Cx/`:
 
-- `construction.c` — a two-field struct constructed and read back, the fields
+- `construction.c`: a two-field struct constructed and read back, the fields
   initialized in declaration order; an ordinary call still a call; plain C
   rejecting the form.
-- `construction-diags.c` — a missing field, positional values, values in the
+- `construction-diags.c`: a missing field, positional values, values in the
   wrong order, an extra value, and a union.
-- `construction-access.c` — a struct with a private field not constructible at
+- `construction-access.c`: a struct with a private field not constructible at
   file scope even inside the owning module, constructible from the type's own
   implementation, a wholly public struct constructible anywhere, and reading
   still governed by read access.

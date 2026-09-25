@@ -17,7 +17,7 @@ precise existing Clang diagnostics when they already describe the issue correctl
 
 ## Fix safety
 
-A syntactically valid edit is not necessarily the user's intent. Changing a public
+A syntactically valid edit is not necessarily the developer's intent. Changing a public
 field/type to nullable or adding a missing public method alters API contracts. Offer
 such edits as explicit user-selected actions, not automatically applied "safe fixes".
 

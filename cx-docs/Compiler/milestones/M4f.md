@@ -1,4 +1,4 @@
-# M4f — Custom initializers
+# M4f: Custom initializers
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -33,7 +33,7 @@ Rect s = Rect(5);
 - An initializer is written `init(...)`, with **no return type**. Writing one
   is an error: an initializer produces its own type.
 - It takes argument labels, overloads, access specifiers and a body exactly
-  the way a method does, because it *is* one — see below.
+  like a method because it *is* one. See below.
 - `self` is available throughout, as is the unqualified spelling of a field.
 - It cannot be `~mutating`: it establishes the value it builds.
 - **Declaring any initializer suppresses the generated memberwise surface.**
@@ -53,9 +53,8 @@ An initializer is a `FunctionDecl` named `init` in the record, carrying
 method has. Nothing about labels, overload resolution, access, linkage,
 mangling, continuations or body replay needed a second implementation: they
 all key on the method representation that [M4a](M4a.md)–[M4d](M4d.md) already
-built. The only thing that distinguishes an initializer is its name, and the
-two places that have to care about it — `LookupCxMethod`, so `r.init(...)` is
-not a member call, and construction, so `Rect(...)` finds it.
+built. Only two places distinguish an initializer by name: `LookupCxMethod`, so
+`r.init(...)` is not a member call, and construction, so `Rect(...)` finds it.
 
 The parser reaches the same conclusion by splicing a `void` return type in
 front of `init(` and letting the ordinary member path run. `init (x);` where
@@ -112,13 +111,13 @@ No new node, no new attribute and no new storage. An initializer is a
 
 ## Tests
 
-`clang/test/Cx/init.c` — two initializers distinguished by their labels; `self`
+`clang/test/Cx/init.c`: two initializers distinguished by their labels; `self`
 and the unqualified field spelling; a field default surviving an initializer
 that does not write it; an initializer declared with the type and defined in a
 continuation; an `internal init` keeping a type with a `private` field
 constructible; the mangled symbol of each.
 
-`clang/test/Cx/init-diags.c` — the generated surface gone once an initializer
+`clang/test/Cx/init-diags.c`: the generated surface gone once an initializer
 exists; a wrong label leaving no candidate; `r.init(...)` not being a member
 call; a written return type; `~mutating init`; construction at file scope;
 `init` still an ordinary identifier as a typedef, a member name and a

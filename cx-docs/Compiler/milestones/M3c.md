@@ -1,4 +1,4 @@
-# M3c — Overload lookup and compound references
+# M3c: Overload lookup and compound references
 
 Status: **Completed** (implemented and verified in this checkout).
 
@@ -98,16 +98,16 @@ None.
 
 `clang/test/Cx/`:
 
-- `overloads.c` — overloads by type and by label, including two that differ
+- `overloads.c`: overloads by type and by label, including two that differ
   only in their label, each with its own symbol; `short` promoting to `int`
   rather than converting to `long`.
-- `overloads-diags.c` — a label making candidates inapplicable, with a note
+- `overloads-diags.c`: a label making candidates inapplicable, with a note
   naming the expected label; an ambiguous call reported as ambiguous.
-- `compound-references.c` — `&move(x:)` selected by two different target types,
+- `compound-references.c`: `&move(x:)` selected by two different target types,
   a single match, `_` for unlabeled positions, and calls still parsing as calls.
-- `compound-references-diags.c` — an unknown label, a wrong arity, a compound
+- `compound-references-diags.c`: an unknown label, a wrong arity, a compound
   name on a non-function, and an ambiguous reference without context.
-- `labels-redecl.c`, `labels-redecl-unowned.c` — the label-agreement rule in
+- `labels-redecl.c`, `labels-redecl-unowned.c`: the label-agreement rule in
   the file kind where it applies.
 
 Verification run on this checkout: `clang/test` 48930 passed, 30 expectedly
