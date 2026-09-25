@@ -18,6 +18,7 @@
 #include "clang/Sema/Initialization.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/SaveAndRestore.h"
+#include "clang/Sema/Designator.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Sema.h"
@@ -2085,18 +2086,20 @@ ExprResult Sema::ActOnCxEnumCase(EnumDecl *ED, IdentifierInfo *Name,
   return buildCxEnumValue(*this, ED, ECD, NameLoc, nullptr, NameLoc);
 }
 
-QualType Sema::getCxCaseArgumentType(Expr *Callee, unsigned Index) {
-  if (!getLangOpts().CX || !Callee)
+/// The type argument \p Index of a call to \p Callee has when \p Accept
+/// takes it, in every function \p Callee may name; null otherwise.
+static QualType
+getCxArgumentType(Sema &S, Expr *Callee, unsigned Index,
+                  llvm::function_ref<bool(QualType)> Accept) {
+  if (!S.getLangOpts().CX || !Callee)
     return QualType();
   Callee = Callee->IgnoreParenImpCasts();
-  // The Cx enum every candidate expects at Index; null when none does or two
-  // candidates disagree.
   QualType Found;
   bool Conflict = false;
   auto Consider = [&](QualType T) {
-    if (!getCxEnum(T))
+    if (!Accept(T))
       return;
-    T = Context.getCanonicalType(T).getUnqualifiedType();
+    T = S.Context.getCanonicalType(T).getUnqualifiedType();
     if (Found.isNull())
       Found = T;
     else if (Found != T)
@@ -2106,7 +2109,7 @@ QualType Sema::getCxCaseArgumentType(Expr *Callee, unsigned Index) {
     const auto *FD = dyn_cast<FunctionDecl>(ND->getUnderlyingDecl());
     if (!FD)
       return;
-    unsigned I = Index + (ThroughReceiver ? getCxReceiverOffset(FD) : 0);
+    unsigned I = Index + (ThroughReceiver ? S.getCxReceiverOffset(FD) : 0);
     if (I < FD->getNumParams())
       Consider(FD->getParamDecl(I)->getType());
   };
@@ -2133,6 +2136,78 @@ QualType Sema::getCxCaseArgumentType(Expr *Callee, unsigned Index) {
       Consider(FPT->getParamType(Index));
   }
   return Conflict ? QualType() : Found;
+}
+
+QualType Sema::getCxCaseArgumentType(Expr *Callee, unsigned Index) {
+  return getCxArgumentType(*this, Callee, Index,
+                           [&](QualType T) { return getCxEnum(T); });
+}
+
+QualType Sema::getCxTupleArgumentType(Expr *Callee, unsigned Index) {
+  // Keep the labels the parameter is written with; they check the literal.
+  return getCxArgumentType(*this, Callee, Index,
+                           [&](QualType T) { return isCxTupleType(T); });
+}
+
+QualType Sema::getCxElementType(QualType T, unsigned Index) {
+  if (!getLangOpts().CX || T.isNull())
+    return QualType();
+  if (const ArrayType *AT = Context.getAsArrayType(T))
+    return AT->getElementType();
+  if (const auto *RT = T->getAs<RecordType>()) {
+    const RecordDecl *RD = RT->getDecl()->getDefinition();
+    // A payload enum's values are built through its cases.
+    if (!RD || RD->hasAttr<CxPayloadEnumAttr>())
+      return QualType();
+    for (const FieldDecl *FD : RD->fields()) {
+      if (FD->isUnnamedBitField())
+        continue;
+      if (Index-- == 0)
+        return FD->getType();
+      if (RD->isUnion())
+        break; // a union takes one element
+    }
+    return QualType();
+  }
+  // A scalar in braces, `Color c = { .red }`.
+  return T->isScalarType() && Index == 0 ? T : QualType();
+}
+
+QualType Sema::getCxDesignatedType(QualType T, const Designation &D,
+                                   unsigned &Next) {
+  Next = ~0u;
+  QualType Cur = T;
+  for (unsigned I = 0, N = D.getNumDesignators(); I != N && !Cur.isNull();
+       ++I) {
+    const Designator &Des = D.getDesignator(I);
+    if (Des.isArrayDesignator() || Des.isArrayRangeDesignator()) {
+      const ArrayType *AT = Context.getAsArrayType(Cur);
+      Cur = AT ? AT->getElementType() : QualType();
+      // Every element of an array has one type; positions go on from any.
+      if (I == 0)
+        Next = 0;
+      continue;
+    }
+    const auto *RT = Cur->getAs<RecordType>();
+    const RecordDecl *RD = RT ? RT->getDecl()->getDefinition() : nullptr;
+    Cur = QualType();
+    if (!RD)
+      break;
+    unsigned Position = 0;
+    for (const FieldDecl *FD : RD->fields()) {
+      if (FD->isUnnamedBitField())
+        continue;
+      if (FD->getIdentifier() == Des.getFieldDecl()) {
+        Cur = FD->getType();
+        // C goes on with the field after the designated one.
+        if (I == 0 && !RD->isUnion())
+          Next = Position + 1;
+        break;
+      }
+      ++Position;
+    }
+  }
+  return Cur;
 }
 
 ExprResult Sema::BuildCxEnumMember(Expr *Base,

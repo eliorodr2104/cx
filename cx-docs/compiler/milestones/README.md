@@ -43,3 +43,4 @@ ones.
 - [M4.5: Access control, field defaults and construction agree with C initialization](M4.5.md): **Completed**
 - [M4.6: Linkage and mangling that link, and don't collide](M4.6.md): **Completed**
 - [M4.7: Tooling and the preprocessor keep Cx meaning](M4.7.md): **Completed**
+- [M6.1: `.case` in aggregate and tuple elements](M6.1.md): **Completed**

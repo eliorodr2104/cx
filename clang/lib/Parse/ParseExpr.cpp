@@ -491,6 +491,9 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
                        Actions.isCxTupleType(LHS.get()->getType());
       // Cx: `c = .red`, `c == .red`, `c != .red`, the last branch of `?:`,
       // and the operands of option set operators, `p | .read`, `p |= .write`.
+      if (getLangOpts().CX && OpToken.is(tok::equal) && LHS.isUsable() &&
+          Actions.isCxTupleType(LHS.get()->getType()))
+        CxTupleType = LHS.get()->getType();
       if (OpToken.is(tok::question))
         CxCaseType = CxBranchCaseType;
       else if (getLangOpts().CX && LHS.isUsable() &&
@@ -792,6 +795,7 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
   NotCastExpr = false;
   bool InCxTupleContext = std::exchange(CxTupleContext, false);
   QualType CxExpectedCaseType = std::exchange(CxCaseType, QualType());
+  QualType CxExpectedTupleType = std::exchange(CxTupleType, QualType());
   if (!CxExpectedCaseType.isNull())
     CxCaseTypeAt[Tok.getLocation()] = CxExpectedCaseType;
 
@@ -813,7 +817,7 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
   switch (SavedKind) {
   case tok::l_paren: {
     if (getLangOpts().CX && isCxTupleLiteralStart(InCxTupleContext)) {
-      Res = ParseCxTupleLiteral();
+      Res = ParseCxTupleLiteral(CxExpectedTupleType);
       break;
     }
     // If this expression is limited to being a unary-expression, the paren can
@@ -2035,9 +2039,13 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
                    CxTupleContext = Tok.is(tok::l_paren) && !LHS.isInvalid() &&
                                     Actions.isCxTupleArgument(LHS.get(),
                                                               ArgExprs.size());
-                   // `.red` for a Cx enum parameter.
+                   // `.red` for a Cx enum parameter, and the element types
+                   // of a tuple parameter.
                    if (Tok.is(tok::period) && !LHS.isInvalid())
                      CxCaseType = Actions.getCxCaseArgumentType(
+                         LHS.get(), ArgExprs.size());
+                   if (CxTupleContext)
+                     CxTupleType = Actions.getCxTupleArgumentType(
                          LHS.get(), ArgExprs.size());
                  }
                  PreferredType.enterFunctionArgument(Tok.getLocation(),
@@ -3193,6 +3201,9 @@ Parser::ParseCompoundLiteralExpression(ParsedType Ty,
   if (!getLangOpts().C99)   // Compound literals don't exist in C90.
     Diag(LParenLoc, diag::ext_c99_compound_literal);
   PreferredType.enterTypeCast(Tok.getLocation(), Ty.get());
+  // Cx: the literal's type reaches a `.case` in its elements.
+  if (getLangOpts().CX && Ty)
+    CxBraceType = Actions.GetTypeFromParser(Ty);
   ExprResult Result = ParseInitializer();
   if (!Result.isInvalid() && Ty)
     return Actions.ActOnCompoundLiteral(LParenLoc, Ty, RParenLoc, Result.get());

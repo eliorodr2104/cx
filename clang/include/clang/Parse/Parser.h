@@ -2139,11 +2139,31 @@ private:
     return getLangOpts().CX && Actions.getCxEnum(T) ? T : QualType();
   }
 
-  /// Cx: the element type of the array a braced initializer initializes.
-  QualType CxCaseElementType;
+  /// Cx: the type the next braced initializer initializes, so each element
+  /// knows the type a `.case` in it takes.
+  QualType CxBraceType;
+
+  /// Cx: the tuple type the next tuple literal initializes, when known, so
+  /// each element knows the type a `.case` in it takes.
+  QualType CxTupleType;
+
+  /// Cx: for a designator inside a braced initializer, the type of the braced
+  /// list, and back from it the position of the next positional element.
+  QualType CxDesignatorBase;
+  unsigned CxDesignatorNext = 0;
 
   /// Cx: whether `. ident` and `[ ... ]` designators from here reach an `=`.
   bool isCxDesignatorAhead();
+
+  /// Cx: the element about to be parsed initializes \p T: a `.case`, a
+  /// nested braced list or a tuple literal in it takes that type.
+  void prepareCxElement(QualType T) {
+    CxCaseType = getCxCaseContext(T);
+    CxBraceType = T;
+    bool Tuple = !T.isNull() && Actions.isCxTupleType(T);
+    CxTupleType = Tuple ? T : QualType();
+    CxTupleContext = Tuple && Tok.is(tok::l_paren);
+  }
 
   /// Cx: the body of a Cx switch, `{ case .a(x): ... default: ... }`.
   StmtResult ParseCxSwitchBody(SourceLocation SwitchLoc, Stmt *Switch,
@@ -2191,8 +2211,9 @@ private:
   /// context, with a comma at its top level.
   bool isCxTupleLiteralStart(bool InTupleContext);
 
-  /// Parse `([label:] value, [label:] value, ...)`.
-  ExprResult ParseCxTupleLiteral();
+  /// Parse `([label:] value, [label:] value, ...)`, a literal of \p Expected
+  /// when the destination is known.
+  ExprResult ParseCxTupleLiteral(QualType Expected = QualType());
 
   /// Whether the token \p Offset ahead starts a destructuring pattern
   /// `(a, b) =`, as after `var` or `let`.

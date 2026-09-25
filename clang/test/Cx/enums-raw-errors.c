@@ -17,8 +17,10 @@ enum Color bad2(void) { return red; }        // expected-error {{'red' is a case
 void ctx(void) {
   var v = .red;                          // expected-error {{the enum of '.red' is not known here; write 'Type.red'}}
   int n = .red;                          // expected-error {{the enum of '.red' is not known here}}
-  struct { enum Color c; } s = { .red }; // expected-error {{the enum of '.red' is not known here}}
-  (int, enum Color) t = (1, .red);       // expected-error {{the enum of '.red' is not known here}}
+  // Brace elision: C gives `.red` to p.y, an int; the element is typed as the
+  // field it would be without elision, so the mismatch is an error, never a
+  // silent conversion.
+  struct { struct { int x, y; } p; enum Color c; } o = { 1, .red }; // expected-error {{incompatible}}
 }
 
 enum Raw: unsigned char { case r0, r1 }

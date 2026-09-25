@@ -50,8 +50,9 @@ bool Parser::MayBeDesignationStart() {
     return true;
 
   case tok::l_square: {  // designator: array-designator
+    // Cx: `{ [.read] }` holds an option set literal; a designator reaches '='.
     if (!PP.getLangOpts().CPlusPlus)
-      return true;
+      return getLangOpts().CX ? isCxDesignatorAhead() : true;
 
     // C++11 lambda expressions and C99 designators can be ambiguous all the
     // way through the closing ']' and to the next character. Handle the easy
@@ -368,6 +369,10 @@ ExprResult Parser::ParseInitializerWithPotentialDesignator(
     SourceLocation EqualLoc = ConsumeToken();
     PreferredType.enterDesignatedInitializer(
         Tok.getLocation(), DesignatorCompletion.PreferredBaseType, Desig);
+    // Cx: the designated member's type reaches a `.case` in its value.
+    if (getLangOpts().CX)
+      prepareCxElement(Actions.getCxDesignatedType(CxDesignatorBase, Desig,
+                                                   CxDesignatorNext));
     return Actions.ActOnDesignatedInitializer(Desig, EqualLoc, false,
                                               ParseInitializer());
   }
@@ -454,8 +459,10 @@ ExprResult Parser::ParseBraceInitializer() {
       Actions, EnterExpressionEvaluationContext::InitList);
 
   bool InitExprsOk = true;
-  // Cx: `.red` elements of an array of a Cx enum. Nested braces do not see it.
-  QualType CxElementType = std::exchange(CxCaseElementType, QualType());
+  // Cx: the type this list initializes; each element's type reaches a `.case`
+  // in it, a nested list, and a tuple literal.
+  QualType CxListType = std::exchange(CxBraceType, QualType());
+  unsigned CxIndex = 0;
   QualType LikelyType = PreferredType.get(T.getOpenLocation());
   DesignatorCompletionInfo DesignatorCompletion{InitExprs, LikelyType};
   bool CalledSignatureHelp = false;
@@ -488,13 +495,21 @@ ExprResult Parser::ParseBraceInitializer() {
     // If we know that this cannot be a designation, just parse the nested
     // initializer directly.
     ExprResult SubElt;
-    if (MayBeDesignationStart())
+    if (MayBeDesignationStart()) {
+      llvm::SaveAndRestore Base(CxDesignatorBase, CxListType);
+      CxDesignatorNext = ~0u;
       SubElt = ParseInitializerWithPotentialDesignator(DesignatorCompletion);
-    else if (Tok.getKind() == tok::annot_embed)
+      CxIndex = CxDesignatorNext;
+    } else if (Tok.getKind() == tok::annot_embed) {
       SubElt = createEmbedExpr();
-    else {
-      CxCaseType = CxElementType;
+    } else {
+      QualType ElemTy = CxIndex == ~0u
+                            ? QualType()
+                            : Actions.getCxElementType(CxListType, CxIndex);
+      prepareCxElement(ElemTy);
       SubElt = ParseInitializer();
+      if (CxIndex != ~0u)
+        ++CxIndex;
     }
 
     if (Tok.is(tok::ellipsis))

@@ -2650,21 +2650,22 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
       PreferredType.enterVariableInit(Tok.getLocation(), ThisDecl);
       CxTupleContext = getLangOpts().CX && Tok.is(tok::l_paren) &&
                        Actions.isCxTupleInitContext(ThisDecl);
-      // Cx: `Color c = .red`, and `Color all[] = { .red, .green }`.
+      // Cx: `Color c = .red`, `Color all[] = { .red }`, `Pixel p = { .c =
+      // .red }`, `(int, Color) t = (1, .red)`: the declared type reaches the
+      // elements.
       QualType CxInitType;
-      if (auto *VD = dyn_cast_or_null<VarDecl>(ThisDecl))
+      if (auto *VD = dyn_cast_or_null<VarDecl>(ThisDecl);
+          VD && getLangOpts().CX)
         CxInitType = VD->getType();
       CxCaseType = getCxCaseContext(CxInitType);
-      llvm::SaveAndRestore CxElements(
-          CxCaseElementType,
-          getLangOpts().CX && !CxInitType.isNull() && CxInitType->isArrayType()
-              ? getCxCaseContext(Actions.getASTContext()
-                                     .getAsArrayType(CxInitType)
-                                     ->getElementType())
-              : QualType());
+      llvm::SaveAndRestore CxBrace(CxBraceType, CxInitType);
+      CxTupleType = !CxInitType.isNull() && Actions.isCxTupleType(CxInitType)
+                        ? CxInitType
+                        : QualType();
       ExprResult Init = ParseInitializer(ThisDecl);
       CxTupleContext = false;
       CxCaseType = QualType();
+      CxTupleType = QualType();
 
       // If this is the only decl in (possibly) range based for statement,
       // our best guess is that the user meant ':' instead of '='.
@@ -6324,7 +6325,7 @@ bool Parser::isCxTupleLiteralStart(bool InTupleContext) {
   return skipToCxTopLevelComma();
 }
 
-ExprResult Parser::ParseCxTupleLiteral() {
+ExprResult Parser::ParseCxTupleLiteral(QualType Expected) {
   BalancedDelimiterTracker T(*this, tok::l_paren);
   T.consumeOpen();
   ExprVector Elems;
@@ -6341,10 +6342,18 @@ ExprResult Parser::ParseCxTupleLiteral() {
       ConsumeToken(); // ':'
     }
     Labels.push_back(Label);
-    // An element that is itself a parenthesized list is a nested tuple.
+    // An element that is itself a parenthesized list is a nested tuple. When
+    // the destination is known, its element types reach `.case` and nested
+    // tuples.
+    QualType ElemTy = Actions.getCxElementType(Expected, Elems.size());
     CxTupleContext = Tok.is(tok::l_paren);
+    CxCaseType = getCxCaseContext(ElemTy);
+    CxTupleType = !ElemTy.isNull() && Actions.isCxTupleType(ElemTy)
+                      ? ElemTy
+                      : QualType();
     ExprResult E = ParseAssignmentExpression();
     CxTupleContext = false;
+    CxTupleType = QualType();
     if (E.isInvalid()) {
       SkipUntil(tok::r_paren, StopAtSemi | StopBeforeMatch);
       T.consumeClose();

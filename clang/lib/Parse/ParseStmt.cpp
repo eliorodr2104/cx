@@ -2700,6 +2700,9 @@ StmtResult Parser::ParseReturnStatement() {
           CxTupleContext =
               Tok.is(tok::l_paren) && Actions.isCxTupleType(FD->getReturnType());
           CxCaseType = getCxCaseContext(FD->getReturnType());
+          CxTupleType = Actions.isCxTupleType(FD->getReturnType())
+                            ? FD->getReturnType()
+                            : QualType();
         }
       R = ParseExpression();
       CxTupleContext = false;

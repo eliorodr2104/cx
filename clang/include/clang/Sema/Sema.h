@@ -4403,6 +4403,20 @@ public:
   /// when every function \p Callee may name agrees; null otherwise.
   QualType getCxCaseArgumentType(Expr *Callee, unsigned Index);
 
+  /// Cx: the type element \p Index of a braced list or tuple literal
+  /// initializing \p T takes: an array's element, a struct's or tuple's
+  /// field, a union's first field. Null when unknown.
+  QualType getCxElementType(QualType T, unsigned Index);
+
+  /// Cx: the type the designator chain \p D reaches in \p T; \p Next is the
+  /// position of the element after it, or ~0u when unknown.
+  QualType getCxDesignatedType(QualType T, const Designation &D,
+                               unsigned &Next);
+
+  /// Cx: the tuple type argument \p Index of a call to \p Callee expects,
+  /// when every function \p Callee may name agrees; null otherwise.
+  QualType getCxTupleArgumentType(Expr *Callee, unsigned Index);
+
   /// Cx: `Base.Name` on a Cx enum value; only `rawValue` exists.
   ExprResult BuildCxEnumMember(Expr *Base, const DeclarationNameInfo &Name);
 
