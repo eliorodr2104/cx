@@ -68,3 +68,18 @@ int lines(void) {
   (int, float) next = (first, 2.0)
   return next.$0
 }
+
+// So does one after a struct or enum closed without ';', declared or defined.
+// CHECK-LABEL: define {{.*}} @"_Z{{[0-9]+}}_Cx0$Geo$swapu6$TupleIiiE"
+struct Pair { int a; }
+(int, int) swap((int, int) p) { return (p.$1, p.$0) }
+struct Pair
+(int, int) *pairs;
+// CHECK-LABEL: define {{.*}} @"_Z{{[0-9]+}}_Cx0$Geo$sidesv"
+enum Side { Left, Right }
+(int, int) sides(void) { return (Left, Right) }
+
+// A parenthesized name is still C's declarator.
+struct Wrapped { int v; }
+(wrapped);
+int unwrap(void) { return wrapped.v + pairs->$0; }

@@ -1441,6 +1441,13 @@ void Parser::ParseNullabilityClassAttributes(ParsedAttributes &attrs) {
 }
 
 bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
+  // Cx: `struct S {...}\n(int, int) f()` cannot be C's parenthesized
+  // declarator, so the tuple type starts the next declaration and a missing
+  // ';' is implied before it. `(x)` and the abstract `(int, int)` of a
+  // function type are still read as C (see isCxTupleTypeStart).
+  if (isCxTupleTypeStart(/*AfterSpecifiers=*/true))
+    return false;
+
   // This switch enumerates the valid "follow" set for type-specifiers.
   switch (Tok.getKind()) {
   default:

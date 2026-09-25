@@ -54,7 +54,9 @@ read it. A tuple is recognized only where C has no reading:
 
 A line that begins with a tuple type starts a declaration, so M5b's implied
 `;` holds before it. `1\n(int, float) t` cannot be a call, because a call takes
-no type argument.
+no type argument, and `struct S {...}\n(int, int) f()` cannot be C's
+parenthesized declarator, which holds a name or the abstract parameter list of a
+function type.
 
 ## Semantics
 
@@ -152,7 +154,8 @@ requires identical IR, in GNU89, GNU17 and C23:
     access, through a pointer too;
   - relabelling across a call, assignment of a literal, `sizeof`;
   - destructuring with `var`, `let` and `_`;
-  - a tuple type on the line after an implied `;`;
+  - a tuple type on the line after an implied `;`, also after a struct or enum
+    closed without one, while `struct S {...}\n(s);` still declares `s`;
   - the struct layout and the mangled parameter.
 - **`tuples-errors.c`**: element types, labels, one-element tuples, label
   mismatch, destructuring errors, incompatible tuples, unknown members, and
