@@ -61,6 +61,24 @@ runnable example. The [milestone index](cx-docs/compiler/milestones/README.md) i
 authoritative status. Design documents also describe later work, so they must not be
 read as a release claim.
 
+## Install
+
+Prebuilt compilers are attached to each
+[release](https://github.com/eliorodr2104/cx/releases). The macOS build runs on Apple
+silicon with macOS 14 or later and needs the Xcode Command Line Tools
+(`xcode-select --install`) for the SDK and the linker. Save the example at the top as
+`demo.c`, then:
+
+```sh
+curl -L https://github.com/eliorodr2104/cx/releases/download/cx-v0.1/clangx-v0.1-macos-arm64.tar.xz | tar -xJ
+export SDKROOT="$(xcrun --show-sdk-path)"
+./clangx/bin/clangx demo.c -o demo
+```
+
+The binaries are not signed. A download through `curl` runs as is; an archive
+downloaded with a browser must first be cleared with
+`xattr -dr com.apple.quarantine clangx`.
+
 ## Build
 
 This repository is a fork of the LLVM monorepo. A partial clone avoids downloading
