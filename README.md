@@ -67,7 +67,7 @@ This repository is a fork of the LLVM monorepo. A partial clone avoids downloadi
 the full LLVM history up front:
 
 ```sh
-git clone --filter=blob:none --single-branch -b cx/main https://github.com/eliorodr2104/llvm-project cx
+git clone --filter=blob:none --single-branch -b cx/main https://github.com/eliorodr2104/cx
 cd cx
 ```
 
