@@ -902,6 +902,11 @@ private:
   /// did, consuming nothing.
   bool TryCxImplicitSemicolon();
 
+  /// Cx: where a skip last stopped before a line without consuming.
+  SourceLocation CxLastSkipStop;
+  /// Cx: whether the current token begins a statement or a declaration.
+  bool isCxStatementStart() const;
+
   /// Where TryCxImplicitSemicolon last implied a ';'. It consumes nothing, so
   /// implying a second one at the same token would let a recovery loop stand
   /// still; the second time is an ordinary missing ';'.

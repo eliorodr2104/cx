@@ -324,6 +324,19 @@ static bool HasFlagsSet(Parser::SkipUntilFlags L, Parser::SkipUntilFlags R) {
   return (static_cast<unsigned>(L) & static_cast<unsigned>(R)) != 0;
 }
 
+bool Parser::isCxStatementStart() const {
+  if (Tok.isOneOf(tok::identifier, tok::l_paren, tok::l_brace, tok::star,
+                  tok::amp, tok::plusplus, tok::minusminus, tok::minus,
+                  tok::plus, tok::exclaim, tok::tilde, tok::period) ||
+      Tok.isLiteral())
+    return true;
+  // Keywords begin statements and declarations, except those that continue
+  // one.
+  const IdentifierInfo *II = Tok.getIdentifierInfo();
+  return II && II->isKeyword(getLangOpts()) &&
+         !Tok.isOneOf(tok::kw_else, tok::kw_case, tok::kw_default);
+}
+
 bool Parser::SkipUntil(ArrayRef<tok::TokenKind> Toks, SkipUntilFlags Flags) {
   // We always want this function to skip at least one token if the first token
   // isn't T and if not at EOF.
@@ -350,6 +363,21 @@ bool Parser::SkipUntil(ArrayRef<tok::TokenKind> Toks, SkipUntilFlags Flags) {
       while (Tok.isNot(tok::eof))
         ConsumeAnyToken();
       return true;
+    }
+
+    // Cx: a line break stands in for a ';', so a skip that stops at one also
+    // stops before the next line, outside parentheses and brackets, where C
+    // breaks lines freely. Starting there, it stops at once before a token
+    // that begins a statement, which the caller then parses, but only once at
+    // each place, so that it always makes progress.
+    if (getLangOpts().CX && HasFlagsSet(Flags, StopAtSemi) &&
+        Tok.isAtStartOfLine() && !ParenCount && !BracketCount) {
+      if (!isFirstTokenSkipped)
+        return false;
+      if (isCxStatementStart() && Tok.getLocation() != CxLastSkipStop) {
+        CxLastSkipStop = Tok.getLocation();
+        return false;
+      }
     }
 
     switch (Tok.getKind()) {

@@ -130,6 +130,7 @@ static Frame framed = { .count = 1 }
 void braces(void) {
   Size a = { 1, 2 } // expected-error {{'Size' has an initializer, so it is constructed with 'Size(...)', not with braces}}
   Frame f = { { 1, 2 }, 3 } // expected-error {{'Size' has an initializer, so it is constructed with 'Size(...)', not with braces}}
+  Size b = (Size){ 3, 4 } // expected-error {{'Size' has an initializer, so it is constructed with 'Size(...)', not with braces}}
   Frame e = { 1, 2, 3 } // expected-error {{'Size' has an initializer, so it is constructed with 'Size(...)', not with braces}}
   Frame g = { Size(2), 1 }
   Frame h = { .count = 1 }
@@ -138,6 +139,4 @@ void braces(void) {
   later = Size(5)
   Size copy = later
   note(g.count + h.count + zero.w + copy.w + global.w + framed.count + e.count)
-  // Recovery from an error in an initializer skips to the next ';'.
-  Size b = (Size){ 3, 4 }; // expected-error {{'Size' has an initializer, so it is constructed with 'Size(...)', not with braces}}
 }

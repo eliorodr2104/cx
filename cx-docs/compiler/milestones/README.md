@@ -48,3 +48,4 @@ ones.
 - [M4.7: Tooling and the preprocessor keep Cx meaning](M4.7.md): **Completed**
 - [M5.1: Line breaks that C cannot continue](M5.1.md): **Completed**
 - [M6.1: `.case` in aggregate and tuple elements](M6.1.md): **Completed**
+- [M6.2: Enum and recovery hardening](M6.2.md): **Completed**

@@ -145,8 +145,7 @@ failed, 0 unexpected failures, with `Index/crash-recovery-modules.m` excluded
 - ~~**A line that begins with `(`, `[`, `-`, `*` or `&` continues the one
   before it** wherever C can read it so.~~ Narrowed by [M5.1](M5.1.md): it
   continues only where C can validly continue.
-- **Error recovery skips to the next `;`.** After an error inside an
-  initializer the parser skips tokens until a `;`, which without semicolons
-  can be the end of the function.
+- ~~**Error recovery skips to the next `;`.**~~ Closed by [M6.2](M6.2.md): it
+  stops at a line break.
 - **Trailing closures**, which interact with the boundary before `{`, are
   M12.
