@@ -7791,6 +7791,8 @@ public:
   ///         unlabeled-statement
   /// \endverbatim
   StmtResult ParseDeferStatement(SourceLocation *TrailingElseLoc);
+  bool isCxDeferStatement(const Token &Next);
+  bool isCxDeferBlockStart();
 
   /// ParseExpansionStatement - Parse a C++26 expansion
   /// statement ('template for').

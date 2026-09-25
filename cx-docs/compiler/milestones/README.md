@@ -33,6 +33,7 @@ ones.
 - [M6c: Payload enums](M6c.md): **Completed**
 - [M6d: Pattern matching](M6d.md): **Completed**
 - [M6e: Option sets](M6e.md): **Completed**
+- [M7a: `defer`](M7a.md): **Completed**
 
 ## Hardening passes
 

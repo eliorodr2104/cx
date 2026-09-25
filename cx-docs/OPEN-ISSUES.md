@@ -119,6 +119,11 @@ stack context without an ownership distinction.
 **Evidence:** self-assignment, aliasing, every partial-init failure point, weak races,
 stack/heap context copies, C callback retention, and declared failure behavior.
 
+**Resolved for `defer`:** jumps may leave a deferred scope and run its defers, but may
+not enter a deferred block or skip a `defer` into its scope; a deferred block cannot
+be left by `return`, `break`, `continue` or `goto`, nor call `setjmp`/`longjmp`; a
+`longjmp`, `exit` or signal does not run defers. See [Defer](language/defer.md).
+
 <a id="g08--writeback-and-mutable-views"></a>
 ## G08 - Writeback and mutable views
 

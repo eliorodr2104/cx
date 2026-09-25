@@ -161,6 +161,8 @@ Retry:
   case tok::identifier:
   ParseIdentifier: {
     Token Next = NextToken();
+    if (isCxDeferStatement(Next))
+      return ParseDeferStatement(TrailingElseLoc);
     if (Next.is(tok::colon)) { // C99 6.8.1: labeled-statement
       // Both C++11 and GNU attributes preceding the label appertain to the
       // label, so put them in a single list to pass on to
@@ -2639,7 +2641,7 @@ StmtResult Parser::ParseBreakOrContinueStatement(bool IsContinue) {
   SourceLocation KwLoc = ConsumeToken(); // Eat the keyword.
   SourceLocation LabelLoc;
   LabelDecl *Target = nullptr;
-  if (Tok.is(tok::identifier)) {
+  if (Tok.is(tok::identifier) && !isCxDeferBlockStart()) {
     Target =
         Actions.LookupExistingLabel(Tok.getIdentifierInfo(), Tok.getLocation());
     LabelLoc = ConsumeToken();
@@ -2673,8 +2675,9 @@ StmtResult Parser::ParseReturnStatement() {
   SourceLocation ReturnLoc = ConsumeToken();  // eat the 'return'.
 
   ExprResult R;
-  // Cx: `}` never starts a returned value.
-  if (Tok.isNot(tok::semi) && !(getLangOpts().CX && Tok.is(tok::r_brace))) {
+  // Cx: `}` and `defer {` never start a returned value.
+  if (Tok.isNot(tok::semi) && !(getLangOpts().CX && Tok.is(tok::r_brace)) &&
+      !isCxDeferBlockStart()) {
     if (!IsCoreturn)
       PreferredType.enterReturn(Actions, Tok.getLocation());
     // FIXME: Code completion for co_return.
@@ -2719,9 +2722,33 @@ StmtResult Parser::ParseReturnStatement() {
   return Actions.ActOnReturnStmt(ReturnLoc, R.get(), getCurScope());
 }
 
+bool Parser::isCxDeferBlockStart() {
+  return getLangOpts().CX && Tok.is(tok::identifier) &&
+         Tok.getIdentifierInfo()->isStr("defer") &&
+         NextToken().is(tok::l_brace);
+}
+
+bool Parser::isCxDeferStatement(const Token &Next) {
+  // Cx: `defer {` starts a defer statement. `defer` stays an identifier
+  // anywhere else; an undeclared `defer` followed by a name is a defer
+  // missing its block.
+  if (!getLangOpts().CX || !Tok.getIdentifierInfo()->isStr("defer"))
+    return false;
+  if (Next.is(tok::l_brace))
+    return true;
+  return Next.isOneOf(tok::identifier, tok::kw_return, tok::kw_if) &&
+         Actions.isCxContextualKeyword(Tok.getIdentifierInfo(), getCurScope());
+}
+
 StmtResult Parser::ParseDeferStatement(SourceLocation *TrailingElseLoc) {
-  assert(Tok.is(tok::kw__Defer));
+  assert(Tok.is(tok::kw__Defer) ||
+         (getLangOpts().CX && Tok.is(tok::identifier)));
+  bool CxDefer = Tok.is(tok::identifier);
   SourceLocation DeferLoc = ConsumeToken();
+
+  // A Cx defer always takes a block; recover with the statement as its body.
+  if (CxDefer && Tok.isNot(tok::l_brace))
+    Diag(Tok, diag::err_expected_after) << "'defer'" << tok::l_brace;
 
   Actions.ActOnStartOfDeferStmt(DeferLoc, getCurScope());
 

@@ -37,6 +37,7 @@ contracts that must be completed at a specific implementation milestone. Use the
 | Access | public/internal/private on struct/class members; setter restrictions | Accepted; G08 mutation paths |
 | Modules | Optional `#module`, normal `#include`, owned declarations | Accepted; G09 provenance/build rules |
 | Init | Auto when no custom init exists; any custom init suppresses generated constructors | Accepted |
+| Defer | Block only, reverse order per scope, value returned before cleanup; no jump into or past it | Accepted |
 | Deinit | Automatic member cleanup plus optional non-throwing user hook | Accepted |
 | Classes | ARC by default; manual reference counting also supported | Accepted semantics; manual spelling pending |
 | Properties | Implicit stored access; getter-only shorthand; explicit get/set | Accepted |

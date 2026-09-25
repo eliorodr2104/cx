@@ -657,7 +657,8 @@ void StmtPrinter::VisitBreakStmt(BreakStmt *Node) {
 }
 
 void StmtPrinter::VisitDeferStmt(DeferStmt *Node) {
-  Indent() << "_Defer";
+  // Cx spells it `defer`, which is not a keyword in C.
+  Indent() << (Context && Context->getLangOpts().CX ? "defer" : "_Defer");
   PrintControlledStmt(Node->getBody());
 }
 
