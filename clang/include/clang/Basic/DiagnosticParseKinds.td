@@ -246,6 +246,9 @@ def err_cx_switch_expected_case : Error<
   "a Cx switch holds 'case' and 'default' clauses">;
 def err_cx_switch_pattern : Error<
   "a case of a Cx switch is written '.name' or 'Type.name'">;
+def err_cx_set_literal_needs_type : Error<
+  "the option set of this literal is not known here; write its cases as "
+  "'Type.a | Type.b'">;
 def err_cx_switch_empty_case : Error<
   "this case has no body; list the cases in one label to share a body">;
 def err_expected_semi_decl_list : Error<

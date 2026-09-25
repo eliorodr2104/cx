@@ -32,6 +32,7 @@ ones.
 - [M6b: Raw and simple enums](M6b.md): **Completed**
 - [M6c: Payload enums](M6c.md): **Completed**
 - [M6d: Pattern matching](M6d.md): **Completed**
+- [M6e: Option sets](M6e.md): **Completed**
 
 ## Hardening passes
 

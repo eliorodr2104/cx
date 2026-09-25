@@ -2165,10 +2165,15 @@ private:
                                    SourceLocation CaseLoc);
 
   /// Parse `([label:] value, ...)` from its `(`. False after a diagnostic.
+  /// \p ExpectedCase is the type a `.case` argument takes, if any.
   bool ParseCxLabeledArguments(SmallVectorImpl<Expr *> &Args,
                                SmallVectorImpl<const IdentifierInfo *> &Labels,
                                SmallVectorImpl<SourceLocation> &LabelLocs,
-                               SourceLocation &LParen, SourceLocation &RParen);
+                               SourceLocation &LParen, SourceLocation &RParen,
+                               QualType ExpectedCase = QualType());
+
+  /// Cx: `[a, b]` or `[]`, a literal of option set \p Expected.
+  ExprResult ParseCxOptionSetLiteral(QualType Expected);
 
   /// From inside parentheses, skip to a comma at their top level, or to what
   /// closes them. Used only under a tentative parse.

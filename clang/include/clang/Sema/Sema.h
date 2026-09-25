@@ -4470,6 +4470,34 @@ public:
                                  SmallVectorImpl<Stmt *> &Clauses,
                                  SourceLocation LBrace, SourceLocation RBrace);
 
+  /// Cx: whether \p ED is an option set.
+  bool isCxOptionSet(const EnumDecl *ED) const;
+
+  /// Cx: `enum E: OptionSet { case ... }`; mark \p ED as an option set.
+  void ActOnCxOptionSetStart(EnumDecl *ED);
+
+  /// Cx: `[a, b]` or `[]`, a set of option set \p Expected.
+  ExprResult ActOnCxOptionSetLiteral(QualType Expected, SourceLocation LBracket,
+                                     MultiExprArg Elems, SourceLocation RBracket);
+
+  /// Cx: `a op b` where an operand is an option set; \p Handled says whether
+  /// it was one.
+  ExprResult BuildCxOptionSetBinOp(SourceLocation OpLoc, BinaryOperatorKind Opc,
+                                   Expr *LHS, Expr *RHS, bool &Handled);
+
+  /// Cx: `~a` on option set \p A, the complement within its declared bits.
+  ExprResult BuildCxOptionSetNot(SourceLocation OpLoc, Expr *A);
+
+  /// Cx: whether `Base.Name(...)` is an option set test.
+  bool isCxOptionSetMethod(Expr *Base, const IdentifierInfo *Name);
+
+  /// Cx: `a.contains(b)`, `a.isSubset(of: b)`, `a.isSuperset(of: b)`,
+  /// `a.isDisjoint(with: b)`.
+  ExprResult BuildCxOptionSetMethod(Expr *Base, const IdentifierInfo *Name,
+                                    SourceLocation NameLoc,
+                                    ArrayRef<const IdentifierInfo *> Labels,
+                                    MultiExprArg Args, SourceLocation RParen);
+
   /// Cx: whether \p S is the C switch that lowers a Cx switch.
   static bool isCxSwitch(const SwitchStmt *S);
 

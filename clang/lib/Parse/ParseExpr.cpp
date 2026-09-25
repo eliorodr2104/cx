@@ -489,11 +489,16 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
       CxTupleContext = getLangOpts().CX && OpToken.is(tok::equal) &&
                        Tok.is(tok::l_paren) && LHS.isUsable() &&
                        Actions.isCxTupleType(LHS.get()->getType());
-      // Cx: `c = .red`, `c == .red`, `c != .red`, and the last branch of `?:`.
+      // Cx: `c = .red`, `c == .red`, `c != .red`, the last branch of `?:`,
+      // and the operands of option set operators, `p | .read`, `p |= .write`.
       if (OpToken.is(tok::question))
         CxCaseType = CxBranchCaseType;
       else if (getLangOpts().CX && LHS.isUsable() &&
-               OpToken.isOneOf(tok::equal, tok::equalequal, tok::exclaimequal))
+               (OpToken.isOneOf(tok::equal, tok::equalequal,
+                                tok::exclaimequal, tok::pipe, tok::amp,
+                                tok::caret, tok::minus) ||
+                OpToken.isOneOf(tok::pipeequal, tok::ampequal,
+                                tok::caretequal, tok::minusequal)))
         CxCaseType = getCxCaseContext(LHS.get()->getType());
       RHS = ParseCastExpression(CastParseKind::AnyCastExpr);
     }
@@ -1653,6 +1658,18 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
     }
     goto ExpectedExpression;
   case tok::l_square:
+    // Cx: `[.read, .write]` and `[]`, a literal of the option set expected
+    // here. No C expression starts with '['.
+    if (getLangOpts().CX) {
+      EnumDecl *ED = Actions.getCxEnum(CxExpectedCaseType);
+      if (ED && Actions.isCxOptionSet(ED))
+        return ParsePostfixExpressionSuffix(
+            ParseCxOptionSetLiteral(CxExpectedCaseType));
+      Diag(Tok, diag::err_cx_set_literal_needs_type);
+      ConsumeBracket();
+      SkipUntil(tok::r_square, StopAtSemi);
+      return ExprError();
+    }
     if (getLangOpts().CPlusPlus) {
       if (getLangOpts().ObjC) {
         // C++11 lambda expressions and Objective-C message sends both start with a
@@ -2195,6 +2212,26 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
                      getLangOpts().MicrosoftExt && SS.isNotEmpty(),
                      /*AllowDeductionGuide=*/false, &TemplateKWLoc, Name)) {
         LHS = ExprError();
+      }
+
+      // Cx: `set.contains(x)` and the other option set tests.
+      if (getLangOpts().CX && !LHS.isInvalid() && OpKind == tok::period &&
+          Name.getKind() == UnqualifiedIdKind::IK_Identifier &&
+          Tok.is(tok::l_paren) &&
+          Actions.isCxOptionSetMethod(LHS.get(), Name.Identifier)) {
+        ExprVector Args;
+        SmallVector<const IdentifierInfo *, 2> Labels;
+        SmallVector<SourceLocation, 2> LabelLocs;
+        SourceLocation LParen, RParen;
+        QualType SetTy = LHS.get()->getType().getUnqualifiedType();
+        if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParen, RParen,
+                                     SetTy))
+          LHS = ExprError();
+        else
+          LHS = Actions.BuildCxOptionSetMethod(LHS.get(), Name.Identifier,
+                                               Name.StartLocation, Labels,
+                                               Args, RParen);
+        break;
       }
 
       if (!LHS.isInvalid())

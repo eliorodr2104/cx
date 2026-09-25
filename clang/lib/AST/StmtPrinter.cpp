@@ -2122,6 +2122,22 @@ void StmtPrinter::VisitCompoundLiteralExpr(CompoundLiteralExpr *Node) {
 }
 
 void StmtPrinter::VisitImplicitCastExpr(ImplicitCastExpr *Node) {
+  // Cx: a constant option set prints as the literal of its cases.
+  if (const EnumDecl *ED = getCxEnumDecl(Node->getType());
+      ED && ED->hasAttr<CxOptionSetAttr>() &&
+      Node->getCastKind() == CK_IntegralCast)
+    if (const auto *IL = dyn_cast<IntegerLiteral>(Node->getSubExpr())) {
+      OS << '[';
+      bool First = true;
+      for (const EnumConstantDecl *ECD : ED->enumerators())
+        if ((IL->getValue() & ECD->getInitVal().zextOrTrunc(
+                                   IL->getValue().getBitWidth())) != 0) {
+          OS << (First ? "" : ", ") << ED->getName() << '.' << ECD->getName();
+          First = false;
+        }
+      OS << ']';
+      return;
+    }
   // Cx: the only conversion out of a Cx enum is its rawValue.
   if (Node->getCastKind() == CK_IntegralCast &&
       getCxEnumDecl(Node->getSubExpr()->getType())) {

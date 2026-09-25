@@ -20855,6 +20855,11 @@ Decl *Sema::ActOnEnumConstant(Scope *S, Decl *theEnumDecl, Decl *lastEnumConst,
 
   // Cx: a simple enum has no backing type, so its cases carry no value.
   bool CxEnum = getLangOpts().CX && TheEnumDecl->isScoped();
+  if (CxEnum && Val && isCxOptionSet(TheEnumDecl)) {
+    Diag(EqualLoc, diag::err_cx_optionset_value)
+        << Context.getCanonicalTagType(TheEnumDecl);
+    Val = nullptr;
+  }
   if (CxEnum && Val && !TheEnumDecl->getIntegerTypeSourceInfo()) {
     Diag(EqualLoc, diag::err_cx_enum_simple_value)
         << Context.getCanonicalTagType(TheEnumDecl);
@@ -21219,7 +21224,26 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
   // Cx: a simple enum is stored in the smallest unsigned integer holding its
   // cases, whose values are 0, 1, ... since they cannot be written.
   bool CxEnum = getLangOpts().CX && Enum->isScoped();
-  if (CxEnum && !Enum->getIntegerTypeSourceInfo()) {
+  if (CxEnum && isCxOptionSet(Enum)) {
+    // An option set gives case i the bit i, in the smallest unsigned integer
+    // with a bit for every case.
+    unsigned N = 0;
+    for (Decl *D : Elements)
+      if (auto *ECD = cast_or_null<EnumConstantDecl>(D)) {
+        if (N < 64)
+          ECD->setInitVal(Context,
+                          llvm::APSInt(llvm::APInt(64, uint64_t(1) << N),
+                                       /*isUnsigned=*/true));
+        ++N;
+      }
+    if (N > 64)
+      Diag(Enum->getLocation(), diag::err_cx_optionset_too_many)
+          << EnumType << N;
+    Enum->setIntegerType(N <= 8    ? Context.UnsignedCharTy
+                         : N <= 16 ? Context.UnsignedShortTy
+                         : N <= 32 ? Context.UnsignedIntTy
+                                   : Context.UnsignedLongLongTy);
+  } else if (CxEnum && !Enum->getIntegerTypeSourceInfo()) {
     size_t N = llvm::count_if(Elements, [](Decl *D) { return D; });
     Enum->setIntegerType(N <= 0x100     ? Context.UnsignedCharTy
                          : N <= 0x10000 ? Context.UnsignedShortTy
@@ -21324,7 +21348,8 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
   CheckForDuplicateEnumValues(*this, Elements, Enum, EnumType);
 
   // Cx: two cases with one value would make rawValue and matching ambiguous.
-  if (CxEnum) {
+  // An option set's values are its bits, assigned above.
+  if (CxEnum && !isCxOptionSet(Enum)) {
     llvm::DenseMap<llvm::APSInt, EnumConstantDecl *> Seen;
     for (Decl *D : Elements)
       if (auto *ECD = cast_or_null<EnumConstantDecl>(D)) {

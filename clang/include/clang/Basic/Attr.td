@@ -1126,6 +1126,14 @@ def CxPatternBinding : InheritableAttr {
   let Documentation = [InternalOnly];
 }
 
+/// A Cx option set: each case is an independent bit. Added by Sema.
+def CxOptionSet : InheritableAttr {
+  let Spellings = [];
+  let Subjects = SubjectList<[Enum], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
 def InferredNoReturn : InheritableAttr {
   let Spellings = [];
   let SemaHandler = 0;

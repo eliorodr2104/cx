@@ -644,8 +644,10 @@ void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
   if (D->getDeclName())
     Out << ' ' << D->getDeclName();
 
-  // A simple Cx enum has no written backing type.
-  if (CxEnum ? D->getIntegerTypeSourceInfo() != nullptr : D->isFixed())
+  // A simple Cx enum has no written backing type; an option set says so.
+  if (CxEnum && D->hasAttr<CxOptionSetAttr>())
+    Out << " : OptionSet";
+  else if (CxEnum ? D->getIntegerTypeSourceInfo() != nullptr : D->isFixed())
     Out << " : " << D->getIntegerType().stream(Policy);
 
   if (D->isCompleteDefinition()) {

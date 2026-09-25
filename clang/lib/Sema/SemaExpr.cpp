@@ -15654,6 +15654,15 @@ ExprResult Sema::CreateBuiltinBinOp(SourceLocation OpLoc,
   if (!LHS.isUsable() || !RHS.isUsable())
     return ExprError();
 
+  // Cx: option sets have set operators, `|`, `&`, `^`, `-`.
+  if (getLangOpts().CX) {
+    bool Handled = false;
+    ExprResult R =
+        BuildCxOptionSetBinOp(OpLoc, Opc, LHSExpr, RHSExpr, Handled);
+    if (Handled)
+      return R;
+  }
+
   if (getLangOpts().OpenCL) {
     QualType LHSTy = LHSExpr->getType();
     QualType RHSTy = RHSExpr->getType();
@@ -16334,6 +16343,10 @@ static bool isOverflowingIntegerType(ASTContext &Ctx, QualType T) {
 ExprResult Sema::CreateBuiltinUnaryOp(SourceLocation OpLoc,
                                       UnaryOperatorKind Opc, Expr *InputExpr,
                                       bool IsAfterAmp) {
+  // Cx: `~set` is the complement within the set's declared bits.
+  if (getLangOpts().CX && Opc == UO_Not &&
+      isCxOptionSet(getCxEnum(InputExpr->getType())))
+    return BuildCxOptionSetNot(OpLoc, InputExpr);
   ExprResult Input = InputExpr;
   ExprValueKind VK = VK_PRValue;
   ExprObjectKind OK = OK_Ordinary;

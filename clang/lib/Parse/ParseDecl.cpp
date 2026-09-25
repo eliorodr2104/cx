@@ -5321,6 +5321,19 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
   bool CanBeBitfield =
       getCurScope()->isClassScope() && ScopedEnumKWLoc.isInvalid() && Name;
 
+  // Cx: `enum Permission: OptionSet { case ... }` is an option set. The body
+  // makes it a Cx enum, so `OptionSet` names no C23 backing type here.
+  bool CxOptionSet = false;
+  if (getLangOpts().CX && Tok.is(tok::colon) &&
+      NextToken().is(tok::identifier) &&
+      NextToken().getIdentifierInfo()->isStr("OptionSet") &&
+      GetLookAheadToken(2).is(tok::l_brace) &&
+      GetLookAheadToken(3).is(tok::kw_case)) {
+    ConsumeToken(); // ':'
+    ConsumeToken(); // OptionSet
+    CxOptionSet = true;
+  }
+
   // Parse the fixed underlying type.
   if (Tok.is(tok::colon)) {
     // This might be an enum-base or part of some unrelated enclosing context.
@@ -5586,9 +5599,12 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
 
   if (Tok.is(tok::l_brace) && TUK == TagUseKind::Definition) {
     Decl *D = SkipBody.CheckSameAsPrevious ? SkipBody.New : TagDecl;
-    if (CxPayload)
-      if (auto *ED = dyn_cast_or_null<EnumDecl>(D))
+    if (auto *ED = dyn_cast_or_null<EnumDecl>(D)) {
+      if (CxOptionSet)
+        Actions.ActOnCxOptionSetStart(ED);
+      else if (CxPayload)
         Actions.ActOnCxPayloadEnumStart(ED);
+    }
     ParseEnumBody(StartLoc, D, &SkipBody);
     if (SkipBody.CheckSameAsPrevious &&
         !Actions.ActOnDuplicateDefinition(getCurScope(), TagDecl, SkipBody)) {
@@ -6131,7 +6147,7 @@ bool Parser::ParseCxLabeledArguments(
     SmallVectorImpl<Expr *> &Args,
     SmallVectorImpl<const IdentifierInfo *> &Labels,
     SmallVectorImpl<SourceLocation> &LabelLocs, SourceLocation &LParen,
-    SourceLocation &RParen) {
+    SourceLocation &RParen, QualType ExpectedCase) {
   BalancedDelimiterTracker T(*this, tok::l_paren);
   if (T.consumeOpen())
     return false;
@@ -6146,6 +6162,7 @@ bool Parser::ParseCxLabeledArguments(
           } else {
             Labels.push_back(nullptr);
           }
+          CxCaseType = ExpectedCase;
         })) {
       SkipUntil(tok::r_paren, StopAtSemi);
       return false;
@@ -6211,6 +6228,22 @@ bool Parser::isCxTupleTypeStart(bool AfterSpecifiers) {
   // that declarator by name, so a following name or `*` means a tuple.
   SkipUntil(tok::r_paren);
   return Tok.isOneOf(tok::identifier, tok::star);
+}
+
+ExprResult Parser::ParseCxOptionSetLiteral(QualType Expected) {
+  BalancedDelimiterTracker T(*this, tok::l_square);
+  T.consumeOpen();
+  ExprVector Elems;
+  if (Tok.isNot(tok::r_square)) {
+    if (ParseExpressionList(Elems, [&] { CxCaseType = Expected; })) {
+      SkipUntil(tok::r_square, StopAtSemi);
+      return ExprError();
+    }
+  }
+  if (T.consumeClose())
+    return ExprError();
+  return Actions.ActOnCxOptionSetLiteral(Expected, T.getOpenLocation(), Elems,
+                                         T.getCloseLocation());
 }
 
 bool Parser::isCxPayloadEnumBody() {

@@ -56,6 +56,7 @@ Implemented and tested so far:
 - raw and simple enums with scoped cases, `.case` syntax, and `rawValue`
 - payload enums whose cases carry tuple payloads
 - exhaustive `switch` over Cx enums, with payload bindings and no fallthrough
+- option sets with set literals and set algebra
 - implicit tag names and optional semicolons
 - PCH, preprocessing, code completion, and tooling support
 

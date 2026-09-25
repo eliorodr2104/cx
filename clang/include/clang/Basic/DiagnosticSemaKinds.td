@@ -2864,6 +2864,23 @@ def err_cx_enum_payload_label : Error<
   "the payload of case %0 is labelled %1, but the argument is labelled %2">;
 def err_cx_enum_payload_compare : Error<
   "values of %0 cannot be compared with '%1'; match them with switch">;
+def err_cx_optionset_value : Error<
+  "a case of option set %0 is its own bit, so it cannot have a value">;
+def err_cx_optionset_payload : Error<
+  "a case of option set %0 cannot have a payload">;
+def err_cx_optionset_too_many : Error<
+  "option set %0 has %1 cases, but at most 64 fit in its bits">;
+def err_cx_optionset_operator : Error<
+  "'%1' does not apply to option set %0; use '|', '&', '^', '-' or '~'">;
+def err_cx_optionset_mixed : Error<
+  "cannot combine %0 with %1; both must be the same option set">;
+def err_cx_optionset_switch : Error<
+  "an option set is not a closed set of states, so it cannot be matched; "
+  "test its flags with 'contains'">;
+def err_cx_optionset_method : Error<
+  "option set %1 has no member %0">;
+def err_cx_optionset_method_args : Error<
+  "'%0' takes one option set argument%select{|, labelled '%2:'}1">;
 def err_cx_switch_nested_case : Error<
   "a case of a Cx switch must be at the top of the switch body">;
 def err_cx_switch_wrong_enum : Error<"%0 is not a case of %1">;

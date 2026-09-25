@@ -1929,6 +1929,11 @@ void Sema::ActOnCxEnumPayload(Decl *D, ArrayRef<QualType> Types,
                               SourceLocation LParen) {
   auto *ECD = dyn_cast_or_null<EnumConstantDecl>(D);
   auto *ED = ECD ? dyn_cast<EnumDecl>(ECD->getDeclContext()) : nullptr;
+  if (ED && isCxOptionSet(ED)) {
+    Diag(LParen, diag::err_cx_optionset_payload)
+        << Context.getCanonicalTagType(ED);
+    return;
+  }
   if (!ED || !isCxPayloadEnum(ED) || Types.empty())
     return;
   QualType EnumTy = Context.getCanonicalTagType(ED);
@@ -2140,7 +2145,7 @@ ExprResult Sema::BuildCxEnumMember(Expr *Base,
         << Name.getName() << EnumTy;
     return ExprError();
   }
-  if (!ED->getIntegerTypeSourceInfo()) {
+  if (!ED->getIntegerTypeSourceInfo() && !isCxOptionSet(ED)) {
     Diag(Name.getLoc(), diag::err_cx_enum_no_raw_value) << EnumTy;
     return ExprError();
   }
@@ -2178,6 +2183,11 @@ StmtResult Sema::ActOnCxSwitchStart(SourceLocation SwitchLoc,
   IsCx = ED != nullptr;
   if (!ED)
     return StmtError();
+  if (isCxOptionSet(ED)) {
+    Diag(Cond->getExprLoc(), diag::err_cx_optionset_switch)
+        << Cond->getSourceRange();
+    return StmtError();
+  }
   Info.Enum = ED;
   // The condition is evaluated once, into a variable no source can name, held
   // by the switch's init-statement.
@@ -2351,4 +2361,200 @@ bool Sema::diagnoseCxNestedSwitchLabel(SourceLocation Loc) {
     return false;
   Diag(Loc, diag::err_cx_switch_nested_case);
   return true;
+}
+
+bool Sema::isCxOptionSet(const EnumDecl *ED) const {
+  return ED && ED->hasAttr<CxOptionSetAttr>();
+}
+
+void Sema::ActOnCxOptionSetStart(EnumDecl *ED) {
+  ED->addAttr(CxOptionSetAttr::CreateImplicit(Context));
+}
+
+/// The declared bits of option set \p ED.
+static llvm::APInt getCxOptionSetMask(const EnumDecl *ED, unsigned Width) {
+  llvm::APInt Mask(Width, 0);
+  for (const EnumConstantDecl *ECD : ED->enumerators())
+    Mask |= ECD->getInitVal().zextOrTrunc(Width);
+  return Mask;
+}
+
+/// A constant set of option set \p ED holding \p Bits. The printers show
+/// it as a literal of the cases it holds.
+static Expr *buildCxOptionSetConstant(Sema &S, EnumDecl *ED,
+                                      const llvm::APInt &Bits,
+                                      SourceLocation Loc) {
+  QualType IntTy = ED->getIntegerType();
+  auto *Lit = IntegerLiteral::Create(S.Context, Bits, IntTy, Loc);
+  return ImplicitCastExpr::Create(S.Context, S.Context.getCanonicalTagType(ED),
+                                  CK_IntegralCast, Lit, nullptr, VK_PRValue,
+                                  FPOptionsOverride());
+}
+
+/// \p E as a value of option set \p ED, or null after a diagnostic.
+static Expr *checkCxOptionSetOperand(Sema &S, EnumDecl *ED, Expr *E,
+                                     QualType Other) {
+  ExprResult R = S.DefaultLvalueConversion(E);
+  if (R.isInvalid())
+    return nullptr;
+  if (S.getCxEnum(R.get()->getType()) != ED) {
+    S.Diag(E->getExprLoc(), diag::err_cx_optionset_mixed)
+        << Other << R.get()->getType().getUnqualifiedType()
+        << E->getSourceRange();
+    return nullptr;
+  }
+  return R.get();
+}
+
+ExprResult Sema::ActOnCxOptionSetLiteral(QualType Expected,
+                                         SourceLocation LBracket,
+                                         MultiExprArg Elems,
+                                         SourceLocation RBracket) {
+  EnumDecl *ED = getCxEnum(Expected);
+  QualType SetTy = Context.getCanonicalTagType(ED);
+  if (Elems.empty())
+    return buildCxOptionSetConstant(
+        *this, ED, llvm::APInt(Context.getIntWidth(ED->getIntegerType()), 0),
+        LBracket);
+  // The union of the elements, `a | b | ...`.
+  Expr *Set = nullptr;
+  for (Expr *E : Elems) {
+    Expr *V = checkCxOptionSetOperand(*this, ED, E, SetTy);
+    if (!V)
+      return ExprError();
+    Set = !Set ? V
+               : BinaryOperator::Create(Context, Set, V, BO_Or, SetTy,
+                                        VK_PRValue, OK_Ordinary, LBracket,
+                                        CurFPFeatureOverrides());
+  }
+  // A literal is one operand wherever it stands, and prints as one.
+  if (Elems.size() > 1)
+    Set = new (Context) ParenExpr(LBracket, RBracket, Set);
+  return Set;
+}
+
+ExprResult Sema::BuildCxOptionSetNot(SourceLocation OpLoc, Expr *A) {
+  EnumDecl *ED = getCxEnum(A->getType());
+  QualType SetTy = Context.getCanonicalTagType(ED);
+  Expr *V = checkCxOptionSetOperand(*this, ED, A, SetTy);
+  if (!V)
+    return ExprError();
+  // Within the declared bits: `a ^ [every case]`.
+  llvm::APInt Mask =
+      getCxOptionSetMask(ED, Context.getIntWidth(ED->getIntegerType()));
+  Expr *X = BinaryOperator::Create(
+      Context, V, buildCxOptionSetConstant(*this, ED, Mask, OpLoc), BO_Xor,
+      SetTy, VK_PRValue, OK_Ordinary, OpLoc, CurFPFeatureOverrides());
+  return new (Context) ParenExpr(OpLoc, A->getEndLoc(), X);
+}
+
+ExprResult Sema::BuildCxOptionSetBinOp(SourceLocation OpLoc,
+                                       BinaryOperatorKind Opc, Expr *LHS,
+                                       Expr *RHS, bool &Handled) {
+  EnumDecl *ED = getCxEnum(LHS->getType());
+  if (!isCxOptionSet(ED))
+    ED = getCxEnum(RHS->getType());
+  Handled = isCxOptionSet(ED);
+  if (!Handled)
+    return ExprError();
+  QualType SetTy = Context.getCanonicalTagType(ED);
+  bool Compound = BinaryOperator::isCompoundAssignmentOp(Opc);
+  BinaryOperatorKind Op = Compound ? BinaryOperator::getOpForCompoundAssignment(Opc)
+                                   : Opc;
+  // Only arithmetic and bitwise operators are the set's; equality, logic,
+  // assignment and the comma keep the rules of any Cx enum.
+  if (!BinaryOperator::isMultiplicativeOp(Op) &&
+      !BinaryOperator::isAdditiveOp(Op) && !BinaryOperator::isShiftOp(Op) &&
+      !BinaryOperator::isBitwiseOp(Op)) {
+    Handled = false;
+    return ExprError();
+  }
+  if (Op != BO_Or && Op != BO_And && Op != BO_Xor && Op != BO_Sub) {
+    Diag(OpLoc, diag::err_cx_optionset_operator)
+        << SetTy << BinaryOperator::getOpcodeStr(Opc)
+        << LHS->getSourceRange() << RHS->getSourceRange();
+    return ExprError();
+  }
+  Expr *R = checkCxOptionSetOperand(*this, ED, RHS, SetTy);
+  if (!R)
+    return ExprError();
+  // `a - b` is `a & ~b`, the complement within the declared bits.
+  if (Op == BO_Sub) {
+    ExprResult NotR = BuildCxOptionSetNot(OpLoc, R);
+    if (NotR.isInvalid())
+      return ExprError();
+    R = NotR.get();
+    Op = BO_And;
+    Opc = Compound ? BO_AndAssign : BO_And;
+  }
+  if (Compound) {
+    // The left operand is updated once, as a C compound assignment does.
+    if (getCxEnum(LHS->getType()) != ED) {
+      Diag(LHS->getExprLoc(), diag::err_cx_optionset_mixed)
+          << SetTy << LHS->getType().getUnqualifiedType();
+      return ExprError();
+    }
+    QualType LHSTy = LHS->getType();
+    ExprResult Value = R;
+    if (CheckAssignmentOperands(LHS, Value, OpLoc, SetTy, Opc).isNull())
+      return ExprError();
+    return CompoundAssignOperator::Create(
+        Context, LHS, R, Opc, LHSTy.getUnqualifiedType(), VK_PRValue,
+        OK_Ordinary, OpLoc, CurFPFeatureOverrides(), SetTy, SetTy);
+  }
+  Expr *L = checkCxOptionSetOperand(*this, ED, LHS, SetTy);
+  if (!L)
+    return ExprError();
+  return BinaryOperator::Create(Context, L, R, Opc, SetTy, VK_PRValue,
+                                OK_Ordinary, OpLoc, CurFPFeatureOverrides());
+}
+
+bool Sema::isCxOptionSetMethod(Expr *Base, const IdentifierInfo *Name) {
+  return Name && isCxOptionSet(getCxEnum(Base->getType())) &&
+         (Name->isStr("contains") || Name->isStr("isSubset") ||
+          Name->isStr("isSuperset") || Name->isStr("isDisjoint"));
+}
+
+ExprResult Sema::BuildCxOptionSetMethod(Expr *Base, const IdentifierInfo *Name,
+                                        SourceLocation NameLoc,
+                                        ArrayRef<const IdentifierInfo *> Labels,
+                                        MultiExprArg Args,
+                                        SourceLocation RParen) {
+  EnumDecl *ED = getCxEnum(Base->getType());
+  QualType SetTy = Context.getCanonicalTagType(ED);
+  StringRef Label = Name->isStr("isSubset") || Name->isStr("isSuperset") ? "of"
+                    : Name->isStr("isDisjoint")                          ? "with"
+                                                                         : "";
+  if (Args.size() != 1 ||
+      (Label.empty() ? Labels[0] != nullptr
+                     : !Labels[0] || Labels[0]->getName() != Label)) {
+    Diag(NameLoc, diag::err_cx_optionset_method_args)
+        << Name->getName() << !Label.empty() << Label;
+    return ExprError();
+  }
+  Expr *A = checkCxOptionSetOperand(*this, ED, Base, SetTy);
+  Expr *B = A ? checkCxOptionSetOperand(*this, ED, Args[0], SetTy) : nullptr;
+  if (!B)
+    return ExprError();
+  // Each operand is evaluated once: `b` in `a` is `(b & ~a) == []`.
+  auto And = [&](Expr *X, Expr *Y) -> Expr * {
+    return new (Context) ParenExpr(
+        NameLoc, RParen,
+        BinaryOperator::Create(Context, X, Y, BO_And, SetTy, VK_PRValue,
+                               OK_Ordinary, NameLoc, CurFPFeatureOverrides()));
+  };
+  auto Not = [&](Expr *X) { return BuildCxOptionSetNot(NameLoc, X).get(); };
+  Expr *Rest;
+  if (Name->isStr("contains") || Name->isStr("isSuperset"))
+    Rest = And(B, Not(A));
+  else if (Name->isStr("isSubset"))
+    Rest = And(A, Not(B));
+  else
+    Rest = And(A, B);
+  Expr *Empty = buildCxOptionSetConstant(
+      *this, ED, llvm::APInt(Context.getIntWidth(ED->getIntegerType()), 0),
+      NameLoc);
+  return BinaryOperator::Create(Context, Rest, Empty, BO_EQ, Context.IntTy,
+                                VK_PRValue, OK_Ordinary, NameLoc,
+                                CurFPFeatureOverrides());
 }
