@@ -9,6 +9,48 @@ driver.
 #module Demo
 #include <stdio.h>
 
+enum Shape {
+  case circle(double radius)
+  case rect(double width, double height)
+  case point
+}
+
+enum Style: OptionSet { case bold, italic, underline }
+
+struct Label {
+  Shape shape
+  Style style
+}
+
+double area(Shape s) {
+  switch (s) {
+    case .circle(r):
+      return 3.14159 * r * r
+    case .rect(w, h):
+      return w * h
+    case .point:
+      return 0
+  }
+}
+
+int main(void) {
+  struct Label labels[] = {
+    { .circle(radius: 1), [.bold] },
+    { .rect(3, 4), [.italic, .underline] },
+    { .point, [] },
+  }
+  for (int i = 0; i < 3; i++) {
+    struct Label l = labels[i]
+    printf("area %.2f%s\n", area(l.shape), l.style.contains(.bold) ? " (bold)" : "")
+  }
+  return 0
+}
+```
+
+It prints `area 3.14 (bold)`, `area 12.00` and `area 0.00`. Tuples, methods, argument
+labels and generated construction:
+
+```c
 (int, int) divmod(int a, int b) { return (a / b, a % b) }
 
 struct Counter {
@@ -74,7 +116,7 @@ silicon with macOS 14 or later and needs the Xcode Command Line Tools
 `demo.c`, then:
 
 ```sh
-curl -L https://github.com/eliorodr2104/cx/releases/download/cx-v0.1/clangx-v0.1-macos-arm64.tar.xz | tar -xJ
+curl -L https://github.com/eliorodr2104/cx/releases/download/cx-v0.2/clangx-v0.2-macos-arm64.tar.xz | tar -xJ
 export SDKROOT="$(xcrun --show-sdk-path)"
 ./clangx/bin/clangx demo.c -o demo
 ```
