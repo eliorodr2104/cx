@@ -2157,6 +2157,12 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
                                               ParsedTemplateInfo &TemplateInfo,
                                               SourceLocation *DeclEnd,
                                               ForRangeInit *FRI) {
+  // Cx: `var (a, b) = tuple` binds each element to a name.
+  if (getLangOpts().CX && DS.getCxInferenceKind() != DeclSpec::CxInf_none &&
+      isCxDestructuringPattern())
+    return ParseCxDestructuring(DS, DeclEnd,
+                                Context != DeclaratorContext::ForInit);
+
   // Parse the first declarator.
   // Consume all of the attributes from `Attrs` by moving them to our own local
   // list. This ensures that we will not attempt to interpret them as statement
@@ -2642,7 +2648,10 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
       }
 
       PreferredType.enterVariableInit(Tok.getLocation(), ThisDecl);
+      CxTupleContext = getLangOpts().CX && Tok.is(tok::l_paren) &&
+                       Actions.isCxTupleInitContext(ThisDecl);
       ExprResult Init = ParseInitializer(ThisDecl);
+      CxTupleContext = false;
 
       // If this is the only decl in (possibly) range based for statement,
       // our best guess is that the user meant ':' instead of '='.
@@ -3411,7 +3420,10 @@ void Parser::ParseDeclarationSpecifiers(
   ParsedAttributes attrs(AttrFactory);
   // We use Sema's policy to get bool macros right.
   PrintingPolicy Policy = Actions.getPrintingPolicy();
+  bool FirstToken = true;
   while (true) {
+    // Whether no specifier, qualifier or attribute precedes this token.
+    bool AtStart = std::exchange(FirstToken, false);
     bool isInvalid = false;
     bool isStorageClass = false;
     const char *PrevSpec = nullptr;
@@ -4702,6 +4714,24 @@ void Parser::ParseDeclarationSpecifiers(
     break;
 #include "clang/Basic/HLSLIntangibleTypes.def"
 
+    case tok::l_paren: {
+      // Cx: `(int, float)` is a tuple type (see isCxTupleTypeStart).
+      if (DS.hasTypeSpecifier() ||
+          !isCxTupleTypeStart(/*AfterSpecifiers=*/!AtStart))
+        goto DoneWithDeclSpec;
+      SourceLocation StartLoc = Tok.getLocation();
+      TypeResult Type = ParseCxTupleType();
+      if (Type.isUsable()) {
+        if (DS.SetTypeSpecType(DeclSpec::TST_typename, StartLoc, PrevSpec,
+                               DiagID, Type.get(), Policy))
+          Diag(StartLoc, DiagID) << PrevSpec;
+        DS.SetRangeEnd(PrevTokLocation);
+      } else {
+        DS.SetTypeSpecError();
+      }
+      continue;
+    }
+
     case tok::less:
       // GCC ObjC supports types like "<SomeProtocol>" as a synonym for
       // "id<SomeProtocol>".  This is hopelessly old fashioned and dangerous,
@@ -5946,13 +5976,15 @@ bool Parser::isCxImplicitTagConstruction() {
           GetLookAheadToken(3).is(tok::colon));
 }
 
-bool Parser::TryAnnotateCxImplicitTagInParens() {
+bool Parser::TryAnnotateCxImplicitTagInParens(bool InTuple) {
   // Inside expression parentheses, a tag name followed by what can follow a
   // type name there -- `(T)x`, `(T *)p`, `(T[2])`, `sizeof(T)` -- has no C
   // reading: C would take it as an undeclared identifier. `(T(...))` could
-  // be an implicit call, so it is left alone.
+  // be an implicit call, so it is left alone. A tuple element may also be
+  // followed by the next element or by its label.
   if (!getLangOpts().CX || Tok.isNot(tok::identifier) ||
-      !NextToken().isOneOf(tok::r_paren, tok::star, tok::l_square))
+      !(NextToken().isOneOf(tok::r_paren, tok::star, tok::l_square) ||
+        (InTuple && NextToken().isOneOf(tok::comma, tok::identifier))))
     return false;
   ParsedType Ty = Actions.getCxImplicitTagType(*Tok.getIdentifierInfo(),
                                                Tok.getLocation(), getCurScope());
@@ -6035,6 +6067,203 @@ ExprResult Parser::ParseCxConstructionExpression() {
 
   return Actions.ActOnCxConstruction(Ty, TypeLoc, T.getOpenLocation(), Labels,
                                      LabelLocs, Args, RParenLoc);
+}
+
+bool Parser::skipToCxTopLevelComma() {
+  unsigned Depth = 0;
+  while (true) {
+    switch (Tok.getKind()) {
+    case tok::eof:
+      return false;
+    case tok::semi:
+      if (Depth == 0)
+        return false;
+      break;
+    case tok::l_paren:
+    case tok::l_square:
+    case tok::l_brace:
+      ++Depth;
+      break;
+    case tok::r_paren:
+    case tok::r_square:
+    case tok::r_brace:
+      if (Depth == 0)
+        return false;
+      --Depth;
+      break;
+    case tok::comma:
+      if (Depth == 0)
+        return true;
+      break;
+    default:
+      break;
+    }
+    ConsumeAnyToken();
+  }
+}
+
+bool Parser::isCxTupleTypeStart(bool AfterSpecifiers) {
+  if (!getLangOpts().CX || Tok.isNot(tok::l_paren))
+    return false;
+  // In C, `(` and a type name open a cast or a compound literal, whose
+  // parentheses hold one type name. A comma at their top level is not C, so
+  // `(type, ...` can only be a tuple type.
+  RevertingTentativeParsingAction PA(*this);
+  ConsumeParen();
+  if (!isCxTupleTypeStart() && !isTypeSpecifierQualifier(Tok) &&
+      !TryAnnotateCxImplicitTagInParens(/*InTuple=*/true))
+    return false;
+  if (!skipToCxTopLevelComma())
+    return false;
+  if (!AfterSpecifiers)
+    return true;
+  // After other specifiers, `(int, float)` is also C's abstract function
+  // declarator with an implicit int: `__attribute__((x)) (int, float)` in a
+  // block literal, `const (int, float)` as a parameter. Nothing can follow
+  // that declarator by name, so a following name or `*` means a tuple.
+  SkipUntil(tok::r_paren);
+  return Tok.isOneOf(tok::identifier, tok::star);
+}
+
+TypeResult Parser::ParseCxTupleType() {
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  T.consumeOpen();
+  SmallVector<QualType, 4> Types;
+  SmallVector<const IdentifierInfo *, 4> Labels;
+  SmallVector<SourceLocation, 4> Locs;
+  bool Invalid = false;
+  // Each element is a type name, optionally followed by its label.
+  do {
+    SourceLocation ElemLoc = Tok.getLocation();
+    TryAnnotateCxImplicitTagInParens(/*InTuple=*/true);
+    DeclSpec DS(AttrFactory);
+    ParseSpecifierQualifierList(DS);
+    Declarator D(DS, ParsedAttributesView::none(),
+                 DeclaratorContext::Prototype);
+    ParseDeclarator(D);
+    const IdentifierInfo *Label = D.getIdentifier();
+    if (Label && Label->isStr("_"))
+      Label = nullptr;
+    Labels.push_back(Label);
+    Locs.push_back(D.getIdentifier() ? D.getIdentifierLoc() : ElemLoc);
+    TypeSourceInfo *TSI = Actions.GetTypeForDeclarator(D);
+    if (D.isInvalidType() || !TSI)
+      Invalid = true;
+    else
+      Types.push_back(TSI->getType());
+  } while (TryConsumeToken(tok::comma));
+  if (T.consumeClose() || Invalid)
+    return true;
+
+  QualType Ty = Actions.BuildCxTupleType(Types, Labels, Locs,
+                                         T.getOpenLocation());
+  if (Ty.isNull())
+    return true;
+  return Actions.CreateParsedType(
+      Ty, Actions.getASTContext().getTrivialTypeSourceInfo(
+              Ty, T.getOpenLocation()));
+}
+
+bool Parser::isCxTupleLiteralStart(bool InTupleContext) {
+  // `(label: ...` has no C reading: no C expression puts a ':' after a
+  // leading identifier inside parentheses.
+  if (NextToken().is(tok::identifier) && GetLookAheadToken(2).is(tok::colon))
+    return true;
+  if (!InTupleContext)
+    return false;
+  // Where a tuple is expected, the commas at the top level of the
+  // parentheses separate its elements.
+  RevertingTentativeParsingAction PA(*this);
+  ConsumeParen();
+  return skipToCxTopLevelComma();
+}
+
+ExprResult Parser::ParseCxTupleLiteral() {
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  T.consumeOpen();
+  ExprVector Elems;
+  SmallVector<const IdentifierInfo *, 4> Labels;
+  SmallVector<SourceLocation, 4> Locs;
+  do {
+    Locs.push_back(Tok.getLocation());
+    const IdentifierInfo *Label = nullptr;
+    if (Tok.is(tok::identifier) && NextToken().is(tok::colon)) {
+      Label = Tok.getIdentifierInfo();
+      if (Label->isStr("_"))
+        Label = nullptr;
+      ConsumeToken(); // the label
+      ConsumeToken(); // ':'
+    }
+    Labels.push_back(Label);
+    // An element that is itself a parenthesized list is a nested tuple.
+    CxTupleContext = Tok.is(tok::l_paren);
+    ExprResult E = ParseAssignmentExpression();
+    CxTupleContext = false;
+    if (E.isInvalid()) {
+      SkipUntil(tok::r_paren, StopAtSemi | StopBeforeMatch);
+      T.consumeClose();
+      return ExprError();
+    }
+    Elems.push_back(E.get());
+  } while (TryConsumeToken(tok::comma));
+  if (T.consumeClose())
+    return ExprError();
+  return Actions.ActOnCxTupleLiteral(T.getOpenLocation(), Elems, Labels, Locs,
+                                     T.getCloseLocation());
+}
+
+bool Parser::isCxDestructuringPattern(unsigned Offset) {
+  // `(a, b) =`. Without the `=`, `var(a, b)` is a C89 call of an implicitly
+  // declared `var`; a call is never assigned to, so with it this is no C.
+  if (GetLookAheadToken(Offset).isNot(tok::l_paren))
+    return false;
+  unsigned N = Offset + 1, Names = 0;
+  while (GetLookAheadToken(N).is(tok::identifier)) {
+    ++Names;
+    if (GetLookAheadToken(N + 1).isNot(tok::comma))
+      break;
+    N += 2;
+  }
+  return Names >= 2 && GetLookAheadToken(N + 1).is(tok::r_paren) &&
+         GetLookAheadToken(N + 2).is(tok::equal);
+}
+
+Parser::DeclGroupPtrTy Parser::ParseCxDestructuring(ParsingDeclSpec &DS,
+                                                    SourceLocation *DeclEnd,
+                                                    bool ExpectSemi) {
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  T.consumeOpen();
+  SmallVector<IdentifierInfo *, 4> Names;
+  SmallVector<SourceLocation, 4> Locs;
+  do {
+    if (Tok.isNot(tok::identifier)) {
+      Diag(Tok, diag::err_expected) << tok::identifier;
+      SkipMalformedDecl();
+      return nullptr;
+    }
+    IdentifierInfo *II = Tok.getIdentifierInfo();
+    Names.push_back(II->isStr("_") ? nullptr : II);
+    Locs.push_back(ConsumeToken());
+  } while (TryConsumeToken(tok::comma));
+  if (T.consumeClose()) {
+    SkipMalformedDecl();
+    return nullptr;
+  }
+  if (ExpectAndConsume(tok::equal)) {
+    SkipMalformedDecl();
+    return nullptr;
+  }
+  CxTupleContext = Tok.is(tok::l_paren);
+  ExprResult Init = ParseAssignmentExpression();
+  CxTupleContext = false;
+  if (DeclEnd)
+    *DeclEnd = Tok.getLocation();
+  if (ExpectSemi && ExpectAndConsumeSemi(diag::err_expected_semi_declaration))
+    SkipUntil(tok::semi, StopBeforeMatch);
+  if (Init.isInvalid())
+    return nullptr;
+  return Actions.ActOnCxDestructuring(getCurScope(), DS, Names, Locs,
+                                      T.getOpenLocation(), Init.get());
 }
 
 bool Parser::ParseCxAccessSpecifiers(std::optional<unsigned> &Read,

@@ -1562,6 +1562,21 @@ void TypePrinter::printPredefinedSugarAfter(const PredefinedSugarType *T,
 void TypePrinter::printTagType(const TagType *T, raw_ostream &OS) {
   TagDecl *D = T->getDecl();
 
+  // Cx: a tuple prints as its element types.
+  if (D->hasAttr<CxTupleAttr>()) {
+    OS << '(';
+    bool First = true;
+    for (const FieldDecl *FD : cast<RecordDecl>(D)->fields()) {
+      if (!First)
+        OS << ", ";
+      First = false;
+      FD->getType().print(OS, Policy);
+    }
+    OS << ')';
+    spaceBeforePlaceHolder(OS);
+    return;
+  }
+
   if (Policy.IncludeTagDefinition && T->isTagOwned()) {
     D->print(OS, Policy, Indentation);
     spaceBeforePlaceHolder(OS);

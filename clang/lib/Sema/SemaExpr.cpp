@@ -10207,6 +10207,10 @@ AssignConvertType Sema::CheckSingleAssignmentConstraints(QualType LHSType,
   ExprResult LocalRHS = CallerRHS;
   ExprResult &RHS = ConvertRHS ? CallerRHS : LocalRHS;
 
+  // Cx: `t = (1, 2.0)` converts each element to the tuple's.
+  if (getLangOpts().CX && RHS.isUsable() && ConvertRHS)
+    RHS = retargetCxTupleLiteral(RHS.get(), LHSType);
+
   if (const auto *LHSPtrType = LHSType->getAs<PointerType>()) {
     if (const auto *RHSPtrType = RHS.get()->getType()->getAs<PointerType>()) {
       if (RHSPtrType->getPointeeType()->hasAttr(attr::NoDeref) &&

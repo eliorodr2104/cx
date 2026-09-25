@@ -172,8 +172,10 @@ Retry:
     }
 
     // Look up the identifier, and typo-correct it to a keyword if it's not
-    // found.
-    if (Next.isNot(tok::coloncolon)) {
+    // found. Cx: `var (a, b) = t` is a declaration, not a call of `var`.
+    if (Next.isNot(tok::coloncolon) &&
+        !(getLangOpts().CX && isCxInferenceSpecifier(Tok) &&
+          isCxDestructuringPattern(/*Offset=*/1))) {
       // Try to limit which sets of keywords should be included in typo
       // correction based on what the next token is.
       StatementFilterCCC CCC(Next);
@@ -2487,8 +2489,14 @@ StmtResult Parser::ParseReturnStatement() {
                  ? diag::warn_cxx98_compat_generalized_initializer_lists
                  : diag::ext_generalized_initializer_lists)
             << R.get()->getSourceRange();
-    } else
+    } else {
+      // Cx: `return (a, b)` returns a tuple from a function that returns one.
+      if (getLangOpts().CX && Tok.is(tok::l_paren) && !Actions.getCurBlock())
+        if (const FunctionDecl *FD = Actions.getCurFunctionDecl())
+          CxTupleContext = Actions.isCxTupleType(FD->getReturnType());
       R = ParseExpression();
+      CxTupleContext = false;
+    }
     if (R.isInvalid()) {
       SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
       return StmtError();

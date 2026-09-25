@@ -1454,3 +1454,378 @@ ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
     return ExprError();
   return BuildCompoundLiteralExpr(LParenLoc, TInfo, RParenLoc, Init);
 }
+
+//===----------------------------------------------------------------------===//
+// Tuples
+//===----------------------------------------------------------------------===//
+
+bool Sema::isCxTupleType(QualType T) const {
+  const auto *RT = T.isNull() ? nullptr : T->getAs<RecordType>();
+  return RT && RT->getDecl()->hasAttr<CxTupleAttr>();
+}
+
+const CxTupleLabelsAttr *Sema::getCxTupleLabels(QualType T) const {
+  // Labels are sugar: the first labelled typedef in the chain governs, so
+  // `typedef (int id, int) User` keeps them.
+  while (!T.isNull()) {
+    if (const auto *TT = dyn_cast<TypedefType>(T.getTypePtr()))
+      if (const auto *A = TT->getDecl()->getAttr<CxTupleLabelsAttr>())
+        return A;
+    QualType Next = T.getSingleStepDesugaredType(Context);
+    if (Next == T)
+      return nullptr;
+    T = Next;
+  }
+  return nullptr;
+}
+
+/// Whether the tuple struct \p RD stores exactly \p Elems.
+static bool hasCxTupleElements(ASTContext &Ctx, const RecordDecl *RD,
+                               ArrayRef<QualType> Elems) {
+  unsigned I = 0;
+  for (const FieldDecl *FD : RD->fields()) {
+    if (I == Elems.size() || !Ctx.hasSameType(FD->getType(), Elems[I]))
+      return false;
+    ++I;
+  }
+  return I == Elems.size();
+}
+
+QualType Sema::BuildCxTupleType(ArrayRef<QualType> Elems,
+                                ArrayRef<const IdentifierInfo *> Labels,
+                                ArrayRef<SourceLocation> Locs,
+                                SourceLocation Loc) {
+  if (Elems.size() < 2) {
+    Diag(Loc, diag::err_cx_tuple_one_element);
+    return QualType();
+  }
+  bool HasLabels = false;
+  for (unsigned I = 0, E = Elems.size(); I != E; ++I) {
+    QualType T = Elems[I];
+    if (T->isVoidType() || T->isFunctionType() ||
+        T->isVariablyModifiedType()) {
+      Diag(Locs[I], diag::err_cx_tuple_element_type) << T;
+      return QualType();
+    }
+    if (RequireCompleteType(Locs[I], T,
+                            diag::err_cx_tuple_element_incomplete))
+      return QualType();
+    const IdentifierInfo *L = Labels[I];
+    if (!L)
+      continue;
+    HasLabels = true;
+    if (L->getName().contains('$')) {
+      Diag(Locs[I], diag::err_cx_tuple_label_dollar);
+      return QualType();
+    }
+    for (unsigned J = 0; J != I; ++J)
+      if (Labels[J] == L) {
+        Diag(Locs[I], diag::err_cx_tuple_duplicate_label) << L;
+        return QualType();
+      }
+  }
+
+  // The struct is shared by every tuple of these element types, and found
+  // again by a name no source can spell. That name is only a bucket: two
+  // distinct types can print alike, so the elements are compared too. The
+  // name goes through the identifier resolver, which is also how a PCH or
+  // a preamble brings back the struct it already made.
+  TranslationUnitDecl *TU = Context.getTranslationUnitDecl();
+  PrintingPolicy Policy = getPrintingPolicy();
+  auto TypeName = [&](QualType T) {
+    return T.getCanonicalType().getAsString(Policy);
+  };
+  auto Register = [&](NamedDecl *D) {
+    D->setImplicit();
+    TU->addDecl(D);
+    IdResolver.AddDecl(D);
+    if (TUScope)
+      TUScope->AddDecl(D);
+  };
+
+  std::string Name = "(";
+  for (unsigned I = 0, E = Elems.size(); I != E; ++I)
+    Name += (I ? ", " : "") + TypeName(Elems[I]);
+  Name += ")";
+  IdentifierInfo *II = &Context.Idents.get(Name);
+  RecordDecl *RD = nullptr;
+  for (auto It = IdResolver.begin(II), End = IdResolver.end(); It != End; ++It)
+    if (auto *R = dyn_cast<RecordDecl>(*It);
+        R && R->hasAttr<CxTupleAttr>() &&
+        hasCxTupleElements(Context, R, Elems)) {
+      RD = R;
+      break;
+    }
+  if (!RD) {
+    RD = RecordDecl::Create(Context, TagTypeKind::Struct, TU, SourceLocation(),
+                            SourceLocation(), II);
+    RD->addAttr(CxTupleAttr::CreateImplicit(Context));
+    RD->startDefinition();
+    for (unsigned I = 0, E = Elems.size(); I != E; ++I) {
+      QualType T = Elems[I].getCanonicalType();
+      auto *FD = FieldDecl::Create(
+          Context, RD, SourceLocation(), SourceLocation(),
+          &Context.Idents.get("$" + std::to_string(I)), T,
+          Context.getTrivialTypeSourceInfo(T), /*BitWidth=*/nullptr,
+          /*Mutable=*/false, ICIS_NoInit);
+      FD->setAccess(AS_public);
+      RD->addDecl(FD);
+    }
+    RD->completeDefinition();
+    Register(RD);
+  }
+  QualType TupleTy = Context.getTagType(ElaboratedTypeKeyword::None,
+                                        /*Qualifier=*/std::nullopt, RD,
+                                        /*OwnsTag=*/false);
+  if (!HasLabels)
+    return TupleTy;
+
+  // The labels: an implicit typedef of the struct, found again the same way.
+  SmallVector<const IdentifierInfo *, 4> Written;
+  std::string LabelledName = "(";
+  for (unsigned I = 0, E = Elems.size(); I != E; ++I) {
+    Written.push_back(Labels[I] ? Labels[I] : &Context.Idents.get("_"));
+    LabelledName += (I ? ", " : "") + TypeName(Elems[I]);
+    if (Labels[I])
+      LabelledName += " " + Labels[I]->getName().str();
+  }
+  LabelledName += ")";
+  IdentifierInfo *LabelledII = &Context.Idents.get(LabelledName);
+  TypedefDecl *TD = nullptr;
+  for (auto It = IdResolver.begin(LabelledII), End = IdResolver.end();
+       It != End; ++It) {
+    auto *T = dyn_cast<TypedefDecl>(*It);
+    const auto *A = T ? T->getAttr<CxTupleLabelsAttr>() : nullptr;
+    if (A && Context.hasSameType(T->getUnderlyingType(), TupleTy) &&
+        llvm::equal(A->labels(), Written)) {
+      TD = T;
+      break;
+    }
+  }
+  if (!TD) {
+    TD = TypedefDecl::Create(Context, TU, SourceLocation(), SourceLocation(),
+                             LabelledII,
+                             Context.getTrivialTypeSourceInfo(TupleTy));
+    TD->addAttr(
+        CxTupleLabelsAttr::CreateImplicit(Context, Written.data(),
+                                          Written.size()));
+    Register(TD);
+  }
+  return Context.getTypedefType(ElaboratedTypeKeyword::None,
+                                /*Qualifier=*/std::nullopt, TD);
+}
+
+/// A literal of tuple type \p T from the elements as written.
+static ExprResult BuildCxTupleLiteral(Sema &S, QualType T,
+                                      ArrayRef<Expr *> Written,
+                                      SourceLocation LParenLoc,
+                                      SourceLocation RParenLoc) {
+  SmallVector<Expr *, 4> Inits(Written);
+  ExprResult List = S.ActOnInitList(LParenLoc, Inits, RParenLoc);
+  if (List.isInvalid())
+    return ExprError();
+  ExprResult Lit = S.BuildCompoundLiteralExpr(
+      LParenLoc, S.Context.getTrivialTypeSourceInfo(T, LParenLoc), RParenLoc,
+      List.get());
+  if (Lit.isUsable())
+    S.CxTupleLiteralElems[Lit.get()].assign(Written.begin(), Written.end());
+  return Lit;
+}
+
+ExprResult Sema::ActOnCxTupleLiteral(SourceLocation LParenLoc,
+                                     MultiExprArg Elems,
+                                     ArrayRef<const IdentifierInfo *> Labels,
+                                     ArrayRef<SourceLocation> Locs,
+                                     SourceLocation RParenLoc) {
+  SmallVector<Expr *, 4> Written;
+  SmallVector<QualType, 4> Types;
+  for (Expr *E : Elems) {
+    ExprResult R = CheckPlaceholderExpr(E);
+    if (R.isInvalid())
+      return ExprError();
+    Written.push_back(R.get());
+    // Each element's type is deduced as for `var`: the value's type after
+    // decay, without qualifiers.
+    QualType T = R.get()->getType();
+    if (T->isArrayType())
+      T = Context.getArrayDecayedType(T);
+    else if (T->isFunctionType())
+      T = Context.getPointerType(T);
+    Types.push_back(T.getAtomicUnqualifiedType());
+  }
+  QualType TupleTy = BuildCxTupleType(Types, Labels, Locs, LParenLoc);
+  if (TupleTy.isNull())
+    return ExprError();
+  return BuildCxTupleLiteral(*this, TupleTy, Written, LParenLoc, RParenLoc);
+}
+
+Expr *Sema::retargetCxTupleLiteral(Expr *E, QualType Dest) {
+  if (!getLangOpts().CX || !E || !isCxTupleType(Dest))
+    return E;
+  auto It = CxTupleLiteralElems.find(E->IgnoreParens());
+  if (It == CxTupleLiteralElems.end())
+    return E;
+  SmallVector<Expr *, 4> Written(It->second);
+  const RecordDecl *RD = Dest->getAs<RecordType>()->getDecl();
+  if (Written.size() != size_t(std::distance(RD->field_begin(),
+                                             RD->field_end())))
+    return E; // Diagnosed as the incompatible types they are.
+
+  // Labels do not convert anything, but a literal labelled differently from
+  // its destination is a mistake, most likely a swap.
+  const auto *From = getCxTupleLabels(E->getType());
+  const auto *To = getCxTupleLabels(Dest);
+  if (From && To)
+    for (unsigned I = 0, N = Written.size(); I != N; ++I) {
+      const IdentifierInfo *F = From->labels_begin()[I];
+      const IdentifierInfo *T = To->labels_begin()[I];
+      if (F != T && !F->isStr("_") && !T->isStr("_"))
+        Diag(Written[I]->getBeginLoc(), diag::err_cx_tuple_label_mismatch)
+            << I << F << Dest << T;
+    }
+  if (Context.hasSameUnqualifiedType(E->getType(), Dest))
+    return E;
+
+  // Each element initializes its field of the destination.
+  ExprResult R = BuildCxTupleLiteral(*this, Dest.getUnqualifiedType(),
+                                     Written, E->getBeginLoc(), E->getEndLoc());
+  if (R.isInvalid())
+    return CreateRecoveryExpr(E->getBeginLoc(), E->getEndLoc(), Written, Dest)
+        .get();
+  return R.get();
+}
+
+bool Sema::isCxTupleInitContext(Decl *D) {
+  auto *VD = dyn_cast_or_null<VarDecl>(D);
+  if (!VD)
+    return false;
+  QualType T = VD->getType();
+  if (const auto *AT = dyn_cast<AutoType>(T.getTypePtr()))
+    return AT->isCxInference();
+  return isCxTupleType(T);
+}
+
+bool Sema::isCxTupleArgument(Expr *Callee, unsigned Index) {
+  if (!getLangOpts().CX || !Callee)
+    return false;
+  Callee = Callee->IgnoreParenImpCasts();
+  auto HasTupleParam = [&](const NamedDecl *ND, bool ThroughReceiver) {
+    const auto *FD = dyn_cast<FunctionDecl>(ND->getUnderlyingDecl());
+    if (!FD)
+      return false;
+    unsigned I = Index + (ThroughReceiver ? getCxReceiverOffset(FD) : 0);
+    return I < FD->getNumParams() &&
+           isCxTupleType(FD->getParamDecl(I)->getType());
+  };
+  if (auto *DRE = dyn_cast<DeclRefExpr>(Callee);
+      DRE && isa<FunctionDecl>(DRE->getDecl()))
+    return HasTupleParam(DRE->getDecl(), false);
+  if (auto *ME = dyn_cast<MemberExpr>(Callee);
+      ME && isa<FunctionDecl>(ME->getMemberDecl()))
+    return HasTupleParam(ME->getMemberDecl(), true);
+  if (auto *OE = dyn_cast<OverloadExpr>(Callee))
+    return llvm::any_of(OE->decls(), [&](const NamedDecl *ND) {
+      return HasTupleParam(ND, false);
+    });
+  // A call through a function or block pointer.
+  QualType T = Callee->getType();
+  if (T.isNull())
+    return false;
+  if (const auto *PT = T->getAs<PointerType>())
+    T = PT->getPointeeType();
+  else if (const auto *BPT = T->getAs<BlockPointerType>())
+    T = BPT->getPointeeType();
+  if (const auto *FPT = T->getAs<FunctionProtoType>())
+    return Index < FPT->getNumParams() &&
+           isCxTupleType(FPT->getParamType(Index));
+  return false;
+}
+
+void Sema::TranslateCxTupleLabel(QualType BaseTy,
+                                 DeclarationNameInfo &NameInfo) {
+  const IdentifierInfo *II = NameInfo.getName().getAsIdentifierInfo();
+  const CxTupleLabelsAttr *A = getCxTupleLabels(BaseTy);
+  if (!II || !A || II->isStr("_"))
+    return;
+  unsigned I = 0;
+  for (const IdentifierInfo *L : A->labels()) {
+    if (L == II) {
+      NameInfo.setName(&Context.Idents.get("$" + std::to_string(I)));
+      return;
+    }
+    ++I;
+  }
+}
+
+Sema::DeclGroupPtrTy Sema::ActOnCxDestructuring(
+    Scope *S, DeclSpec &DS, ArrayRef<IdentifierInfo *> Names,
+    ArrayRef<SourceLocation> Locs, SourceLocation LParenLoc, Expr *Init) {
+  if (!CurContext->isFunctionOrMethod()) {
+    Diag(LParenLoc, diag::err_cx_destructure_file_scope);
+    return nullptr;
+  }
+  QualType T = Init->getType();
+  if (!isCxTupleType(T)) {
+    Diag(Init->getBeginLoc(), diag::err_cx_destructure_not_tuple) << T;
+    return nullptr;
+  }
+  SmallVector<FieldDecl *, 4> Fields(T->getAs<RecordType>()->getDecl()->fields());
+  if (Fields.size() != Names.size()) {
+    Diag(LParenLoc, diag::err_cx_destructure_count)
+        << unsigned(Fields.size()) << unsigned(Names.size());
+    return nullptr;
+  }
+
+  // The initializer is evaluated once, into a variable no source can name.
+  SmallVector<Decl *, 4> Decls;
+  QualType HiddenTy = T.getUnqualifiedType();
+  auto *Hidden = VarDecl::Create(
+      Context, CurContext, LParenLoc, LParenLoc, /*Id=*/nullptr, HiddenTy,
+      Context.getTrivialTypeSourceInfo(HiddenTy, LParenLoc), SC_None);
+  Hidden->setImplicit();
+  Hidden->setReferenced();
+  CurContext->addHiddenDecl(Hidden);
+  AddInitializerToDecl(Hidden, Init, /*DirectInit=*/false);
+  if (Hidden->isInvalidDecl())
+    return nullptr;
+  Decls.push_back(Hidden);
+
+  bool IsLet = DS.getCxInferenceKind() == DeclSpec::CxInf_let;
+  for (unsigned I = 0, E = Names.size(); I != E; ++I) {
+    if (!Names[I])
+      continue; // `_` discards the element.
+    QualType ET = Fields[I]->getType();
+    if (IsLet)
+      ET.addConst();
+    auto *VD = VarDecl::Create(Context, CurContext, Locs[I], Locs[I],
+                               Names[I], ET,
+                               Context.getTrivialTypeSourceInfo(ET, Locs[I]),
+                               SC_None);
+    LookupResult Previous(*this, Names[I], Locs[I], LookupOrdinaryName,
+                          forRedeclarationInCurContext());
+    LookupName(Previous, S);
+    FilterLookupForScope(Previous, CurContext, S, /*ConsiderLinkage=*/false,
+                         /*AllowInlineNamespace=*/false);
+    if (!Previous.empty()) {
+      Diag(Locs[I], diag::err_redefinition) << Names[I];
+      Diag(Previous.getRepresentativeDecl()->getLocation(),
+           diag::note_previous_definition);
+      VD->setInvalidDecl();
+    }
+    ExprResult Ref = BuildDeclRefExpr(Hidden, HiddenTy, VK_LValue, Locs[I]);
+    CXXScopeSpec SS;
+    ExprResult Elem = BuildMemberReferenceExpr(
+        Ref.get(), HiddenTy, Locs[I], /*IsArrow=*/false, SS, SourceLocation(),
+        /*FirstQualifierInScope=*/nullptr,
+        DeclarationNameInfo(Fields[I]->getDeclName(), Locs[I]),
+        /*TemplateArgs=*/nullptr, S);
+    PushOnScopeChains(VD, S);
+    if (Elem.isUsable())
+      AddInitializerToDecl(VD, Elem.get(), /*DirectInit=*/false);
+    else
+      VD->setInvalidDecl();
+    FinalizeDeclaration(VD);
+    Decls.push_back(VD);
+  }
+  return BuildDeclaratorGroup(Decls);
+}

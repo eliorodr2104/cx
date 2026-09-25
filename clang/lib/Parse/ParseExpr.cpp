@@ -478,8 +478,13 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
       RHSIsInitList = true;
     } else if (getLangOpts().CPlusPlus && NextTokPrec <= prec::Conditional)
       RHS = ParseAssignmentExpression();
-    else
+    else {
+      // Cx: `t = (a, b)` assigns a tuple when `t` is one.
+      CxTupleContext = getLangOpts().CX && OpToken.is(tok::equal) &&
+                       Tok.is(tok::l_paren) && LHS.isUsable() &&
+                       Actions.isCxTupleType(LHS.get()->getType());
       RHS = ParseCastExpression(CastParseKind::AnyCastExpr);
+    }
 
     // We preserve the LHS only if we hit a clear statement boundary (tok::semi)
     // to avoid additional bogus diagnostics.
@@ -753,6 +758,7 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
   tok::TokenKind SavedKind = Tok.getKind();
   auto SavedType = PreferredType;
   NotCastExpr = false;
+  bool InCxTupleContext = std::exchange(CxTupleContext, false);
 
   // Are postfix-expression suffix operators permitted after this
   // cast-expression? If not, and we find some, we'll parse them anyway and
@@ -771,6 +777,10 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
   // by postfix exprs should set AllowSuffix to false.
   switch (SavedKind) {
   case tok::l_paren: {
+    if (getLangOpts().CX && isCxTupleLiteralStart(InCxTupleContext)) {
+      Res = ParseCxTupleLiteral();
+      break;
+    }
     // If this expression is limited to being a unary-expression, the paren can
     // not start a cast expression.
     ParenParseOption ParenExprType;
@@ -1837,6 +1847,11 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
     case tok::l_paren:         // p-e: p-e '(' argument-expression-list[opt] ')'
     case tok::lesslessless: {  // p-e: p-e '<<<' argument-expression-list '>>>'
                                //   '(' argument-expression-list[opt] ')'
+      // Cx: a line that begins with a tuple type starts a declaration; a call
+      // cannot take a type argument, so C has no reading of it as a call.
+      if (getLangOpts().CX && Tok.is(tok::l_paren) && Tok.isAtStartOfLine() &&
+          isCxTupleTypeStart())
+        return LHS;
       tok::TokenKind OpKind = Tok.getKind();
       InMessageExpressionRAIIObject InMessage(*this, false);
 
@@ -1927,6 +1942,10 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
                    } else {
                      CxLabels.push_back(nullptr);
                    }
+                   // `(a, b)` for a tuple parameter is a tuple.
+                   CxTupleContext = Tok.is(tok::l_paren) && !LHS.isInvalid() &&
+                                    Actions.isCxTupleArgument(LHS.get(),
+                                                              ArgExprs.size());
                  }
                  PreferredType.enterFunctionArgument(Tok.getLocation(),
                                                      RunSignatureHelp);

@@ -31,3 +31,4 @@ one slice of a roadmap row that is being implemented in stages; a dotted number
 - [M4.7: Tooling and the preprocessor keep Cx meaning](M4.7.md): **Completed**
 - [M5a: Implicit tag names](M5a.md): **Completed**
 - [M5b: Optional semicolons](M5b.md): **Completed**
+- [M6a: Tuples](M6a.md): **Completed**

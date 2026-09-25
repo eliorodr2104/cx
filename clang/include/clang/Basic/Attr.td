@@ -1057,6 +1057,26 @@ def CxArgumentLabel : InheritableAttr {
   let Documentation = [InternalOnly];
 }
 
+/// Marks the implicit struct that stores a Cx tuple type, one per list of
+/// element types; element N is the field `$N`. Added implicitly by Sema.
+def CxTuple : InheritableAttr {
+  let Spellings = [];
+  let Subjects = SubjectList<[Record], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
+/// The element labels of a labelled Cx tuple type, `_` for an unlabelled
+/// element. It marks the implicit typedef that names the tuple's struct, so
+/// labels are sugar: they change no type identity. Added implicitly by Sema.
+def CxTupleLabels : InheritableAttr {
+  let Spellings = [];
+  let Args = [VariadicIdentifierArgument<"Labels">];
+  let Subjects = SubjectList<[TypedefName], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
 def InferredNoReturn : InheritableAttr {
   let Spellings = [];
   let SemaHandler = 0;

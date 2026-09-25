@@ -2118,7 +2118,40 @@ private:
 
   /// In expression parentheses, annotate a bare tag name as the type it names
   /// when C could not read it (see Sema::getCxImplicitTagType).
-  bool TryAnnotateCxImplicitTagInParens();
+  bool TryAnnotateCxImplicitTagInParens(bool InTuple = false);
+
+  /// Set right before an expression whose leading `(` may open an unlabelled
+  /// tuple literal: an initializer, assignment, argument or return where a
+  /// tuple is expected. The next ParseCastExpression consumes it.
+  bool CxTupleContext = false;
+
+  /// From inside parentheses, skip to a comma at their top level, or to what
+  /// closes them. Used only under a tentative parse.
+  bool skipToCxTopLevelComma();
+
+  /// Whether the tokens start a Cx tuple type: `(` a type name, then a comma
+  /// at the top level of the parentheses. \p AfterSpecifiers: other
+  /// declaration specifiers precede, so a name or `*` must follow too.
+  bool isCxTupleTypeStart(bool AfterSpecifiers = false);
+
+  /// Parse `(type [label], type [label], ...)`.
+  TypeResult ParseCxTupleType();
+
+  /// Whether the `(` here starts a tuple literal: labelled, or, in a tuple
+  /// context, with a comma at its top level.
+  bool isCxTupleLiteralStart(bool InTupleContext);
+
+  /// Parse `([label:] value, [label:] value, ...)`.
+  ExprResult ParseCxTupleLiteral();
+
+  /// Whether the token \p Offset ahead starts a destructuring pattern
+  /// `(a, b) =`, as after `var` or `let`.
+  bool isCxDestructuringPattern(unsigned Offset = 0);
+
+  /// Parse `(name, ...) = initializer` after `var` or `let`.
+  DeclGroupPtrTy ParseCxDestructuring(ParsingDeclSpec &DS,
+                                      SourceLocation *DeclEnd,
+                                      bool ExpectSemi);
 
   /// Whether the tokens start a Cx construction that cannot also be read as a
   /// C declaration or type-id: `Type(label: ...` or `Type(<literal>...`.
@@ -5154,7 +5187,8 @@ private:
     if (getLangOpts().CPlusPlus)
       return isCXXTypeId(TentativeCXXTypeIdContext::InParens, isAmbiguous);
     isAmbiguous = false;
-    return (isTypeSpecifierQualifier(Tok) || TryAnnotateCxImplicitTagInParens()) &&
+    return (isTypeSpecifierQualifier(Tok) ||
+            TryAnnotateCxImplicitTagInParens() || isCxTupleTypeStart()) &&
            !isCxUnambiguousConstruction();
   }
   bool isTypeIdInParens() {
@@ -7817,7 +7851,8 @@ public:
   bool isDeclarationStatement(bool DisambiguatingWithExpression = false) {
     if (getLangOpts().CPlusPlus)
       return isCXXDeclarationStatement(DisambiguatingWithExpression);
-    return isDeclarationSpecifier(ImplicitTypenameContext::No, true) &&
+    return (isDeclarationSpecifier(ImplicitTypenameContext::No, true) ||
+            isCxTupleTypeStart()) &&
            !isCxUnambiguousConstruction();
   }
 
@@ -7831,7 +7866,8 @@ public:
     if (getLangOpts().CPlusPlus)
       return Tok.is(tok::kw_using) ||
              isCXXSimpleDeclaration(/*AllowForRangeDecl=*/true);
-    return isDeclarationSpecifier(ImplicitTypenameContext::No, true);
+    return isDeclarationSpecifier(ImplicitTypenameContext::No, true) ||
+           isCxTupleTypeStart();
   }
 
   /// Determine whether this is a C++1z for-range-identifier.

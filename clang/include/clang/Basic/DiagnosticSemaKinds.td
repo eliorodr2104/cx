@@ -2807,6 +2807,25 @@ def err_cx_label_redeclaration_mismatch : Error<
   "argument labels in redeclaration of %0 do not match the previous "
   "declaration">;
 
+def err_cx_tuple_one_element : Error<
+  "a tuple needs at least two elements">;
+def err_cx_tuple_element_type : Error<
+  "a tuple element cannot have type %0">;
+def err_cx_tuple_element_incomplete : Error<
+  "a tuple element cannot have incomplete type %0">;
+def err_cx_tuple_duplicate_label : Error<
+  "duplicate tuple element label %0">;
+def err_cx_tuple_label_dollar : Error<
+  "a tuple element label cannot contain '$'">;
+def err_cx_tuple_label_mismatch : Error<
+  "tuple element %0 is labelled %1, but %2 labels it %3">;
+def err_cx_destructure_not_tuple : Error<
+  "cannot destructure a value of type %0, which is not a tuple">;
+def err_cx_destructure_count : Error<
+  "cannot destructure a tuple of %0 elements into %1 names">;
+def err_cx_destructure_file_scope : Error<
+  "a tuple can only be destructured inside a function">;
+
 def err_auto_not_allowed_var_inst : Error<
   "'auto' variable template instantiation is not allowed">;
 def err_auto_var_requires_init : Error<

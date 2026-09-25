@@ -4337,6 +4337,56 @@ public:
   ParsedType getCxImplicitTagType(const IdentifierInfo &II,
                                   SourceLocation Loc, Scope *S);
 
+  /// The Cx tuple type of \p Elems: one implicit struct per list of element
+  /// types, with the fields `$0`, `$1`, ... When any of \p Labels is set, the
+  /// result is an implicit typedef of that struct carrying the labels, so
+  /// that labels govern named access without changing type identity. Null
+  /// after a diagnostic. \p Labels and \p Locs are parallel to \p Elems.
+  QualType BuildCxTupleType(ArrayRef<QualType> Elems,
+                            ArrayRef<const IdentifierInfo *> Labels,
+                            ArrayRef<SourceLocation> Locs, SourceLocation Loc);
+
+  /// Whether \p T is a Cx tuple type.
+  bool isCxTupleType(QualType T) const;
+
+  /// The labels of the tuple type \p T as written, or null when it has none.
+  const CxTupleLabelsAttr *getCxTupleLabels(QualType T) const;
+
+  /// Cx: `(label: value, ...)`, or `(value, value, ...)` where the context
+  /// expects a tuple. Its type is deduced from its elements; initializing a
+  /// tuple of other element types from it converts each element (see
+  /// retargetCxTupleLiteral).
+  ExprResult ActOnCxTupleLiteral(SourceLocation LParenLoc, MultiExprArg Elems,
+                                 ArrayRef<const IdentifierInfo *> Labels,
+                                 ArrayRef<SourceLocation> Locs,
+                                 SourceLocation RParenLoc);
+
+  /// When \p E is a tuple literal and \p Dest a tuple type of the same
+  /// arity, \p E rebuilt as a \p Dest literal; otherwise \p E.
+  Expr *retargetCxTupleLiteral(Expr *E, QualType Dest);
+
+  /// Whether an unlabelled `(a, b)` in this position is a tuple: the
+  /// initializer of \p D, a variable of tuple type or declared with `var` or
+  /// `let`.
+  bool isCxTupleInitContext(Decl *D);
+
+  /// Whether argument \p Index of a call to \p Callee has a tuple parameter
+  /// in any function \p Callee may name.
+  bool isCxTupleArgument(Expr *Callee, unsigned Index);
+
+  /// For `t.label` on a labelled tuple, the field the label names.
+  void TranslateCxTupleLabel(QualType BaseTy, DeclarationNameInfo &NameInfo);
+
+  /// `var (a, b) = init`: a hidden variable holds \p Init, evaluated once, and
+  /// each name that is not `_` is a variable initialized from its element.
+  DeclGroupPtrTy ActOnCxDestructuring(Scope *S, DeclSpec &DS,
+                                      ArrayRef<IdentifierInfo *> Names,
+                                      ArrayRef<SourceLocation> Locs,
+                                      SourceLocation LParenLoc, Expr *Init);
+
+  /// The elements of each tuple literal as written, for retargeting.
+  llvm::DenseMap<const Expr *, SmallVector<Expr *, 4>> CxTupleLiteralElems;
+
   /// Whether \p FD is a Cx initializer, the `init` of its record.
   bool isCxInitializer(const FunctionDecl *FD) const;
 

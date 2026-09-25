@@ -3919,6 +3919,15 @@ void CXXNameMangler::mangleType(const EnumType *T) {
   mangleType(static_cast<const TagType*>(T));
 }
 void CXXNameMangler::mangleType(const RecordType *T) {
+  // Cx: a tuple is a vendor extended type over its element types,
+  // `u6$TupleI<types>E`, which demangles as `$Tuple<int, float>`.
+  if (const RecordDecl *RD = T->getDecl(); RD->hasAttr<CxTupleAttr>()) {
+    Out << "u6$TupleI";
+    for (const FieldDecl *FD : RD->fields())
+      mangleType(FD->getType());
+    Out << 'E';
+    return;
+  }
   mangleType(static_cast<const TagType*>(T));
 }
 void CXXNameMangler::mangleType(const TagType *T) {

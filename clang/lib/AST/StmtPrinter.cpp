@@ -249,7 +249,42 @@ void StmtPrinter::PrintRawDecl(Decl *D) {
   D->print(OS, Policy, IndentLevel);
 }
 
+/// Cx: print `var (a, _, c) = init`, which is held as an unnamed variable of
+/// tuple type followed by one variable per named element.
+static bool printCxDestructuring(const DeclStmt *S, raw_ostream &OS,
+                                 const PrintingPolicy &Policy) {
+  auto *Hidden = dyn_cast<VarDecl>(*S->decl_begin());
+  const RecordDecl *RD =
+      Hidden && Hidden->isImplicit() && !Hidden->getDeclName()
+          ? Hidden->getType()->getAsRecordDecl()
+          : nullptr;
+  if (!RD || !RD->hasAttr<CxTupleAttr>() || !Hidden->getInit())
+    return false;
+  SmallVector<const VarDecl *, 4> Names(
+      std::distance(RD->field_begin(), RD->field_end()));
+  bool IsLet = false;
+  for (const Decl *D : llvm::drop_begin(S->decls())) {
+    const auto *VD = dyn_cast<VarDecl>(D);
+    const auto *ME = VD && VD->getInit()
+                         ? dyn_cast<MemberExpr>(VD->getInit()->IgnoreImpCasts())
+                         : nullptr;
+    const auto *FD = ME ? dyn_cast<FieldDecl>(ME->getMemberDecl()) : nullptr;
+    if (!FD)
+      return false;
+    Names[FD->getFieldIndex()] = VD;
+    IsLet = VD->getType().isConstQualified();
+  }
+  OS << (IsLet ? "let (" : "var (");
+  for (unsigned I = 0, E = Names.size(); I != E; ++I)
+    OS << (I ? ", " : "") << (Names[I] ? Names[I]->getName() : "_");
+  OS << ") = ";
+  Hidden->getInit()->printPretty(OS, nullptr, Policy);
+  return true;
+}
+
 void StmtPrinter::PrintRawDeclStmt(const DeclStmt *S) {
+  if (printCxDestructuring(S, OS, Policy))
+    return;
   SmallVector<Decl *, 2> Decls(S->decls());
   Decl::printGroup(Decls.data(), Decls.size(), OS, Policy, IndentLevel);
 }

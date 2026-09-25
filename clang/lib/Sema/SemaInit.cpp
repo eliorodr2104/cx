@@ -6808,6 +6808,11 @@ void InitializationSequence::InitializeFrom(Sema &S,
       Args[I] = result.get();
     }
 
+  // Cx: a tuple literal initializes a tuple of other element types by
+  // converting each element.
+  if (S.getLangOpts().CX && Args.size() == 1)
+    Args[0] = S.retargetCxTupleLiteral(Args[0], Entity.getType());
+
   // C++0x [dcl.init]p16:
   //   The semantics of initializers are as follows. The destination type is
   //   the type of the object or reference being initialized and the source

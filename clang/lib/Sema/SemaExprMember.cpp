@@ -1772,6 +1772,9 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
     bool ThroughPointer = IsArrow || isCxSelfReference(Base);
     if (ThroughPointer)
       BaseTy = BaseTy->isPointerType() ? BaseTy->getPointeeType() : QualType();
+    // A tuple label names its element's field.
+    if (!BaseTy.isNull())
+      TranslateCxTupleLabel(BaseTy, NameInfo);
     const RecordType *RT =
         BaseTy.isNull() ? nullptr : BaseTy->getAs<RecordType>();
     if (RT)
