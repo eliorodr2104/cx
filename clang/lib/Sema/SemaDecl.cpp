@@ -934,8 +934,11 @@ Sema::NameClassification Sema::ClassifyName(Scope *S, CXXScopeSpec &SS,
   }
 
   LookupResult Result(*this, Name, NameLoc, LookupOrdinaryName);
+  // Cx: a member of the receiver is not an undeclared library function.
+  bool CxMember = getLangOpts().CX && SS.isEmpty() &&
+                  isCxImplicitSelfMember(DeclarationNameInfo(Name, NameLoc));
   LookupParsedName(Result, S, &SS, /*ObjectType=*/QualType(),
-                   /*AllowBuiltinCreation=*/!CurMethod);
+                   /*AllowBuiltinCreation=*/!CurMethod && !CxMember);
 
   if (SS.isInvalid())
     return NameClassification::Error();
@@ -967,9 +970,8 @@ Sema::NameClassification Sema::ClassifyName(Scope *S, CXXScopeSpec &SS,
   // Cx: inside a method, a member of the receiver wins over a declaration from
   // outside the method. Leave it to the expression path, which resolves the
   // receiver; a type name is not an expression and keeps its meaning.
-  if (SS.isEmpty() && !Result.empty() && isCxReceiverLookup(Result) &&
-      !isResultTypeOrTemplate(Result, NextToken) &&
-      isCxImplicitSelfMember(NameInfo))
+  if (CxMember && (Result.empty() || isCxReceiverLookup(Result)) &&
+      !isResultTypeOrTemplate(Result, NextToken))
     return NameClassification::Unknown();
 
   bool SecondTry = false;

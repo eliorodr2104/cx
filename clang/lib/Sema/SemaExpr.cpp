@@ -2913,8 +2913,11 @@ ExprResult Sema::ActOnIdExpression(Scope *S, CXXScopeSpec &SS,
                                         IsAddressOfOperand, TemplateArgs);
   } else {
     bool IvarLookupFollowUp = II && !SS.isSet() && getCurMethodDecl();
+    // Cx: a member of the receiver is not an undeclared library function.
+    bool CxMember = getLangOpts().CX && II && SS.isEmpty() &&
+                    isCxImplicitSelfMember(NameInfo);
     LookupParsedName(R, S, &SS, /*ObjectType=*/QualType(),
-                     /*AllowBuiltinCreation=*/!IvarLookupFollowUp);
+                     /*AllowBuiltinCreation=*/!IvarLookupFollowUp && !CxMember);
 
     // If the result might be in a dependent base class, this is a dependent
     // id-expression.

@@ -37,3 +37,11 @@ int use(Counter *c) {
   c->notify();
   return c->shadowed();
 }
+
+// A field named like a library function is still the field.
+typedef struct Clock {
+  double log;
+  int time;
+  void tick(void) { time = time + 1; log = time; }
+} Clock;
+
