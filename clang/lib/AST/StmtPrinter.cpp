@@ -1984,6 +1984,39 @@ void StmtPrinter::VisitCStyleCastExpr(CStyleCastExpr *Node) {
 }
 
 void StmtPrinter::VisitCompoundLiteralExpr(CompoundLiteralExpr *Node) {
+  // Cx: a payload enum value prints as its construction, `Enum.case(args)`.
+  if (const auto *RT = Node->getType()->getAs<RecordType>();
+      RT && RT->getDecl()->hasAttr<CxPayloadEnumAttr>()) {
+    auto *List = dyn_cast<InitListExpr>(Node->getInitializer());
+    if (List && List->getSyntacticForm())
+      List = List->getSyntacticForm();
+    if (List && List->getNumInits()) {
+      PrintExpr(List->getInit(0));
+      if (List->getNumInits() > 1)
+        if (auto *DIE = dyn_cast<DesignatedInitExpr>(List->getInit(1))) {
+          Expr *Payload = DIE->getInit()->IgnoreImpCasts();
+          OS << '(';
+          // A tuple payload prints its elements.
+          auto *Lit = dyn_cast<CompoundLiteralExpr>(Payload);
+          auto *Elems =
+              Lit ? dyn_cast<InitListExpr>(Lit->getInitializer()) : nullptr;
+          if (Elems && Lit->getType()->getAsRecordDecl() &&
+              Lit->getType()->getAsRecordDecl()->hasAttr<CxTupleAttr>()) {
+            if (Elems->getSyntacticForm())
+              Elems = Elems->getSyntacticForm();
+            for (unsigned I = 0, N = Elems->getNumInits(); I != N; ++I) {
+              if (I)
+                OS << ", ";
+              PrintExpr(Elems->getInit(I));
+            }
+          } else {
+            PrintExpr(DIE->getInit());
+          }
+          OS << ')';
+        }
+      return;
+    }
+  }
   OS << '(';
   Node->getType().print(OS, Policy);
   OS << ')';

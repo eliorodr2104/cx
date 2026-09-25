@@ -1077,6 +1077,37 @@ def CxTupleLabels : InheritableAttr {
   let Documentation = [InternalOnly];
 }
 
+/// Marks the implicit struct that stores the values of a Cx payload enum, a
+/// tag followed by a union of payloads, and names its enum. Added by Sema.
+def CxPayloadEnum : InheritableAttr {
+  let Spellings = [];
+  let Args = [DeclArgument<Enum, "PayloadEnum">];
+  let Subjects = SubjectList<[Record], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
+/// On a Cx payload enum, which is the tag of its values: the implicit struct
+/// that stores them. Every source spelling of the enum as a type names that
+/// struct. Added by Sema.
+def CxPayloadRecord : InheritableAttr {
+  let Spellings = [];
+  let Args = [DeclArgument<Record, "Record">];
+  let Subjects = SubjectList<[Enum], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
+/// The payload of a case of a Cx payload enum: its type, a tuple or the
+/// single element's type, and its labels as written, `_` for none.
+def CxEnumPayload : InheritableAttr {
+  let Spellings = [];
+  let Args = [TypeArgument<"Payload">, VariadicIdentifierArgument<"Labels">];
+  let Subjects = SubjectList<[EnumConstant], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
 def InferredNoReturn : InheritableAttr {
   let Spellings = [];
   let SemaHandler = 0;

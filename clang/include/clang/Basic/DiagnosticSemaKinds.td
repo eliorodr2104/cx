@@ -2848,6 +2848,22 @@ def err_cx_enum_variadic : Error<
   "a value of %0 cannot be passed to '...'%select{|; pass '.rawValue'}1">;
 def err_cx_enum_switch : Error<
   "a switch on %0 needs Cx pattern matching, which is not available yet">;
+def err_cx_enum_payload_backing : Error<
+  "%0 has payloads, so it cannot have a backing type">;
+def err_cx_enum_recursive_payload : Error<
+  "a payload of %0 cannot hold %0 itself; recursive payloads are not "
+  "supported yet, but a pointer to %0 is">;
+def err_cx_enum_needs_payload : Error<
+  "case %0 of %1 takes a payload: write '.%2(...)'">;
+def err_cx_enum_no_payload : Error<
+  "case %0 of %1 has no payload, so it takes no parentheses">;
+def err_cx_enum_payload_count : Error<
+  "case %0 of %1 takes %2 %plural{1:value|:values}2, but %3 "
+  "%plural{1:was|:were}3 given">;
+def err_cx_enum_payload_label : Error<
+  "the payload of case %0 is labelled %1, but the argument is labelled %2">;
+def err_cx_enum_payload_compare : Error<
+  "values of %0 cannot be compared with '%1'; match them with switch">;
 
 def err_auto_not_allowed_var_inst : Error<
   "'auto' variable template instantiation is not allowed">;

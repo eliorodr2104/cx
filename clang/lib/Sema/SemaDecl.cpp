@@ -1233,6 +1233,9 @@ Corrected:
     } else {
       T = Context.getTypeDeclType(ElaboratedTypeKeyword::None, SS.getScopeRep(),
                                   Type);
+      // Cx: a payload enum's name is the type of its values.
+      if (auto *Tag = dyn_cast<TagDecl>(Type); Tag && getLangOpts().CX)
+        T = getCxTagSpellingType(Tag, T);
       if (isa<TagType>(T)) {
         auto TTL = TLB.push<TagTypeLoc>(T);
         TTL.setElaboratedKeywordLoc(SourceLocation());
@@ -21314,6 +21317,9 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
 
   Enum->completeDefinition(BestType, BestPromotionType,
                            NumPositiveBits, NumNegativeBits);
+  // Cx: the struct of a payload enum's values, now that its cases are known.
+  if (CxEnum && isCxPayloadEnum(Enum))
+    completeCxPayloadEnum(Enum);
 
   CheckForDuplicateEnumValues(*this, Elements, Enum, EnumType);
 

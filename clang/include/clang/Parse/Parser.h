@@ -2145,6 +2145,27 @@ private:
   /// Cx: whether `. ident` and `[ ... ]` designators from here reach an `=`.
   bool isCxDesignatorAhead();
 
+  /// Cx: whether the `{` here opens an enum body with a payload case, a
+  /// `name (` at the top level of the body.
+  bool isCxPayloadEnumBody();
+
+  /// Parse the elements of a tuple type or a payload after its `(`:
+  /// `type [label], ...`. False after a diagnostic.
+  bool ParseCxTupleElements(SmallVectorImpl<QualType> &Types,
+                            SmallVectorImpl<const IdentifierInfo *> &Labels,
+                            SmallVectorImpl<SourceLocation> &Locs);
+
+  /// Cx: after `Enum.case` or `.case`, the case, with its payload when a
+  /// `(` follows for a payload enum.
+  ExprResult ParseCxEnumCaseSuffix(EnumDecl *ED, IdentifierInfo *Case,
+                                   SourceLocation CaseLoc);
+
+  /// Parse `([label:] value, ...)` from its `(`. False after a diagnostic.
+  bool ParseCxLabeledArguments(SmallVectorImpl<Expr *> &Args,
+                               SmallVectorImpl<const IdentifierInfo *> &Labels,
+                               SmallVectorImpl<SourceLocation> &LabelLocs,
+                               SourceLocation &LParen, SourceLocation &RParen);
+
   /// From inside parentheses, skip to a comma at their top level, or to what
   /// closes them. Used only under a tentative parse.
   bool skipToCxTopLevelComma();

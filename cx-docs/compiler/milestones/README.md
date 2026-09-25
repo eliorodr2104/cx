@@ -30,6 +30,7 @@ ones.
 - [M5b: Optional semicolons](M5b.md): **Completed**
 - [M6a: Tuples](M6a.md): **Completed**
 - [M6b: Raw and simple enums](M6b.md): **Completed**
+- [M6c: Payload enums](M6c.md): **Completed**
 
 ## Hardening passes
 

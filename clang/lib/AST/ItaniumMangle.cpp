@@ -3928,6 +3928,11 @@ void CXXNameMangler::mangleType(const RecordType *T) {
     Out << 'E';
     return;
   }
+  // Cx: the values of a payload enum mangle as the enum, like a raw enum.
+  if (const auto *A = T->getDecl()->getAttr<CxPayloadEnumAttr>()) {
+    mangleName(A->getPayloadEnum()->getDefinitionOrSelf());
+    return;
+  }
   mangleType(static_cast<const TagType*>(T));
 }
 void CXXNameMangler::mangleType(const TagType *T) {

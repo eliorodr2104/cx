@@ -1577,6 +1577,15 @@ void TypePrinter::printTagType(const TagType *T, raw_ostream &OS) {
     return;
   }
 
+  // Cx: the values of a payload enum print as the enum.
+  if (const auto *A = D->getAttr<CxPayloadEnumAttr>()) {
+    if (!Policy.SuppressTagKeyword)
+      OS << "enum ";
+    OS << A->getPayloadEnum()->getName();
+    spaceBeforePlaceHolder(OS);
+    return;
+  }
+
   if (Policy.IncludeTagDefinition && T->isTagOwned()) {
     D->print(OS, Policy, Indentation);
     spaceBeforePlaceHolder(OS);

@@ -5505,12 +5505,17 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
 
   // Cx: a body that uses `case` selects a Cx enum, a scoped enum in C.
   // `case` cannot appear in a C enum body, so no C program changes meaning.
+  // A case with a payload makes a payload enum, whose values are a struct
+  // (see Sema::ActOnCxPayloadEnumStart); the body must know it before `Token *`
+  // in a payload names that struct.
+  bool CxPayload = false;
   if (getLangOpts().CX && TUK == TagUseKind::Definition &&
       ScopedEnumKWLoc.isInvalid() && Tok.is(tok::l_brace) &&
       NextToken().is(tok::kw_case)) {
     ScopedEnumKWLoc = NextToken().getLocation();
     if (!Name)
       Diag(StartLoc, diag::err_cx_enum_needs_name);
+    CxPayload = isCxPayloadEnumBody();
   }
 
   bool Owned = false;
@@ -5581,6 +5586,9 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
 
   if (Tok.is(tok::l_brace) && TUK == TagUseKind::Definition) {
     Decl *D = SkipBody.CheckSameAsPrevious ? SkipBody.New : TagDecl;
+    if (CxPayload)
+      if (auto *ED = dyn_cast_or_null<EnumDecl>(D))
+        Actions.ActOnCxPayloadEnumStart(ED);
     ParseEnumBody(StartLoc, D, &SkipBody);
     if (SkipBody.CheckSameAsPrevious &&
         !Actions.ActOnDuplicateDefinition(getCurScope(), TagDecl, SkipBody)) {
@@ -5683,6 +5691,20 @@ void Parser::ParseEnumBody(SourceLocation StartLoc, Decl *EnumDecl,
 
     EnumConstantDecls.push_back(EnumConstDecl);
     LastEnumConstDecl = EnumConstDecl;
+
+    // Cx: `case location(int line, int column)`, a payload.
+    if (CxEnum && Tok.is(tok::l_paren)) {
+      BalancedDelimiterTracker P(*this, tok::l_paren);
+      P.consumeOpen();
+      SmallVector<QualType, 4> Types;
+      SmallVector<const IdentifierInfo *, 4> Labels;
+      SmallVector<SourceLocation, 4> Locs;
+      if (ParseCxTupleElements(Types, Labels, Locs) && !P.consumeClose())
+        Actions.ActOnCxEnumPayload(EnumConstDecl, Types, Labels, Locs,
+                                   P.getOpenLocation());
+      else
+        P.skipToEnd();
+    }
 
     if (CxEnum) {
       // A comma continues the clause; `;`, a line break, `case` or `}` ends
@@ -6093,37 +6115,46 @@ ExprResult Parser::ParseCxConstructionExpression() {
     ConsumeToken();
   }
 
-  BalancedDelimiterTracker T(*this, tok::l_paren);
-  if (T.consumeOpen())
-    return ExprError();
-
   ExprVector Args;
   SmallVector<const IdentifierInfo *, 8> Labels;
   SmallVector<SourceLocation, 8> LabelLocs;
+  SourceLocation LParenLoc, RParenLoc;
+  if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParenLoc, RParenLoc) ||
+      !Ty)
+    return ExprError();
+
+  return Actions.ActOnCxConstruction(Ty, TypeLoc, LParenLoc, Labels, LabelLocs,
+                                     Args, RParenLoc);
+}
+
+bool Parser::ParseCxLabeledArguments(
+    SmallVectorImpl<Expr *> &Args,
+    SmallVectorImpl<const IdentifierInfo *> &Labels,
+    SmallVectorImpl<SourceLocation> &LabelLocs, SourceLocation &LParen,
+    SourceLocation &RParen) {
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  if (T.consumeOpen())
+    return false;
+  LParen = T.getOpenLocation();
   if (Tok.isNot(tok::r_paren)) {
     if (ParseExpressionList(Args, [&] {
           LabelLocs.push_back(Tok.getLocation());
           if (Tok.is(tok::identifier) && NextToken().is(tok::colon)) {
             Labels.push_back(Tok.getIdentifierInfo());
-            ConsumeToken(); // the field label
+            ConsumeToken(); // the label
             ConsumeToken(); // ':'
           } else {
             Labels.push_back(nullptr);
           }
         })) {
       SkipUntil(tok::r_paren, StopAtSemi);
-      return ExprError();
+      return false;
     }
   }
-
-  SourceLocation RParenLoc = Tok.getLocation();
+  RParen = Tok.getLocation();
   if (T.consumeClose())
-    return ExprError();
-  if (!Ty || Labels.size() != Args.size())
-    return ExprError();
-
-  return Actions.ActOnCxConstruction(Ty, TypeLoc, T.getOpenLocation(), Labels,
-                                     LabelLocs, Args, RParenLoc);
+    return false;
+  return Labels.size() == Args.size();
 }
 
 bool Parser::skipToCxTopLevelComma() {
@@ -6182,12 +6213,27 @@ bool Parser::isCxTupleTypeStart(bool AfterSpecifiers) {
   return Tok.isOneOf(tok::identifier, tok::star);
 }
 
-TypeResult Parser::ParseCxTupleType() {
-  BalancedDelimiterTracker T(*this, tok::l_paren);
-  T.consumeOpen();
-  SmallVector<QualType, 4> Types;
-  SmallVector<const IdentifierInfo *, 4> Labels;
-  SmallVector<SourceLocation, 4> Locs;
+bool Parser::isCxPayloadEnumBody() {
+  RevertingTentativeParsingAction PA(*this);
+  ConsumeBrace();
+  while (!Tok.isOneOf(tok::r_brace, tok::eof)) {
+    if (Tok.is(tok::identifier) && NextToken().is(tok::l_paren))
+      return true;
+    // Skip what a bracket holds, up to its match.
+    if (Tok.isOneOf(tok::l_paren, tok::l_square, tok::l_brace)) {
+      ConsumeAnyToken();
+      SkipUntil(tok::r_paren, tok::r_square, tok::r_brace, StopAtSemi);
+      continue;
+    }
+    ConsumeAnyToken();
+  }
+  return false;
+}
+
+bool Parser::ParseCxTupleElements(
+    SmallVectorImpl<QualType> &Types,
+    SmallVectorImpl<const IdentifierInfo *> &Labels,
+    SmallVectorImpl<SourceLocation> &Locs) {
   bool Invalid = false;
   // Each element is a type name, optionally followed by its label.
   do {
@@ -6209,6 +6255,16 @@ TypeResult Parser::ParseCxTupleType() {
     else
       Types.push_back(TSI->getType());
   } while (TryConsumeToken(tok::comma));
+  return !Invalid;
+}
+
+TypeResult Parser::ParseCxTupleType() {
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  T.consumeOpen();
+  SmallVector<QualType, 4> Types;
+  SmallVector<const IdentifierInfo *, 4> Labels;
+  SmallVector<SourceLocation, 4> Locs;
+  bool Invalid = !ParseCxTupleElements(Types, Labels, Locs);
   if (T.consumeClose() || Invalid)
     return true;
 

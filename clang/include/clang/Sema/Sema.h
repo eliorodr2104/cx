@@ -4406,6 +4406,34 @@ public:
   /// Cx: `Base.Name` on a Cx enum value; only `rawValue` exists.
   ExprResult BuildCxEnumMember(Expr *Base, const DeclarationNameInfo &Name);
 
+  /// Cx: whether \p ED is a payload enum.
+  bool isCxPayloadEnum(const EnumDecl *ED) const;
+
+  /// Cx: the struct that stores the values of payload enum \p ED, or null.
+  RecordDecl *getCxPayloadRecord(const EnumDecl *ED) const;
+
+  /// Cx: the type a source spelling of tag \p TD names: for a payload enum
+  /// the struct of its values, otherwise \p T, the tag's own type.
+  QualType getCxTagSpellingType(const TagDecl *TD, QualType T);
+
+  /// Cx: \p ED has payloads; create the (incomplete) struct of its values.
+  void ActOnCxPayloadEnumStart(EnumDecl *ED);
+
+  /// Cx: case \p ECD carries a payload of \p Types, labelled \p Labels.
+  void ActOnCxEnumPayload(Decl *ECD, ArrayRef<QualType> Types,
+                          ArrayRef<const IdentifierInfo *> Labels,
+                          ArrayRef<SourceLocation> Locs, SourceLocation LParen);
+
+  /// Cx: lay out the struct of payload enum \p ED once its cases are known.
+  void completeCxPayloadEnum(EnumDecl *ED);
+
+  /// Cx: `ED.Name(args)` or `.Name(args)`, a case with its payload.
+  ExprResult ActOnCxEnumCaseCall(EnumDecl *ED, IdentifierInfo *Name,
+                                 SourceLocation NameLoc, SourceLocation LParen,
+                                 ArrayRef<const IdentifierInfo *> Labels,
+                                 ArrayRef<SourceLocation> LabelLocs,
+                                 MultiExprArg Args, SourceLocation RParen);
+
   /// Cx: diagnose a Cx enum value used as a condition; true if \p E is one.
   bool diagnoseCxEnumCondition(const Expr *E);
 

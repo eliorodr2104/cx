@@ -12975,6 +12975,18 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
   bool IsRelational = BinaryOperator::isRelationalOp(Opc);
   bool IsThreeWay = Opc == BO_Cmp;
   bool IsOrdered = IsRelational || IsThreeWay;
+  // Cx: payload enum values compare only through matching.
+  if (getLangOpts().CX)
+    for (ExprResult *Side : {&LHS, &RHS})
+      if (Side->isUsable())
+        if (const auto *RT = Side->get()->getType()->getAs<RecordType>();
+            RT && RT->getDecl()->hasAttr<CxPayloadEnumAttr>()) {
+          Diag(Loc, diag::err_cx_enum_payload_compare)
+              << Side->get()->getType().getUnqualifiedType()
+              << BinaryOperator::getOpcodeStr(Opc)
+              << LHS.get()->getSourceRange() << RHS.get()->getSourceRange();
+          return QualType();
+        }
   // Cx: cases of a Cx enum are equal or not; they have no order.
   if (IsOrdered)
     for (ExprResult *Side : {&LHS, &RHS})

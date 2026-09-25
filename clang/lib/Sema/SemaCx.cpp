@@ -1187,6 +1187,8 @@ ParsedType Sema::getCxImplicitTagType(const IdentifierInfo &II,
     return nullptr;
   QualType T = Context.getTypeDeclType(ElaboratedTypeKeyword::None,
                                        /*Qualifier=*/std::nullopt, Tag);
+  // A payload enum's name is the type of its values.
+  T = getCxTagSpellingType(Tag, T);
   TypeLocBuilder TLB;
   auto TL = TLB.push<TagTypeLoc>(T);
   TL.setElaboratedKeywordLoc(SourceLocation());
@@ -1209,7 +1211,9 @@ ParsedType Sema::getCxConstructionType(const IdentifierInfo *II,
   // diagnostic explains the rule instead of falling back to "not an
   // expression".
   QualType QT = GetTypeFromParser(T);
-  return QT->getAs<RecordType>() ? T : nullptr;
+  // The values of a payload enum are built through its cases.
+  const auto *RT = QT->getAs<RecordType>();
+  return RT && !RT->getDecl()->hasAttr<CxPayloadEnumAttr>() ? T : nullptr;
 }
 
 /// Whether \p RD declares a custom initializer, which replaces the generated
@@ -1830,9 +1834,213 @@ Sema::DeclGroupPtrTy Sema::ActOnCxDestructuring(
   return BuildDeclaratorGroup(Decls);
 }
 
+/// The case \p Name of Cx enum \p ED, marked referenced; null after a
+/// diagnostic.
+static EnumConstantDecl *lookupCxEnumCase(Sema &S, EnumDecl *ED,
+                                          IdentifierInfo *Name,
+                                          SourceLocation NameLoc) {
+  for (NamedDecl *D : ED->lookup(Name))
+    if (auto *ECD = dyn_cast<EnumConstantDecl>(D)) {
+      if (S.DiagnoseUseOfDecl(ECD, NameLoc))
+        return nullptr;
+      S.MarkAnyDeclReferenced(NameLoc, ECD, /*OdrUse=*/false);
+      return ECD;
+    }
+  S.Diag(NameLoc, diag::err_cx_enum_no_case)
+      << Name << S.Context.getCanonicalTagType(ED);
+  return nullptr;
+}
+
+/// A value of payload enum \p ED holding case \p ECD: `(Token){ tag,
+/// .$payload.case = Payload }`, or only the tag when \p Payload is null.
+static ExprResult buildCxEnumValue(Sema &S, EnumDecl *ED, EnumConstantDecl *ECD,
+                                   SourceLocation Loc, Expr *Payload,
+                                   SourceLocation EndLoc) {
+  ASTContext &Ctx = S.Context;
+  QualType T = Ctx.getTagType(ElaboratedTypeKeyword::None, std::nullopt,
+                              S.getCxPayloadRecord(ED), /*OwnsTag=*/false);
+  SmallVector<Expr *, 2> Inits;
+  Inits.push_back(S.BuildDeclRefExpr(ECD, ECD->getType(), VK_PRValue, Loc));
+  if (Payload) {
+    DesignatedInitExpr::Designator Path[] = {
+        DesignatedInitExpr::Designator::CreateFieldDesignator(
+            &Ctx.Idents.get("$payload"), Loc, Loc),
+        DesignatedInitExpr::Designator::CreateFieldDesignator(
+            ECD->getIdentifier(), Loc, Loc)};
+    Inits.push_back(DesignatedInitExpr::Create(Ctx, Path, {}, Loc,
+                                               /*GNUSyntax=*/false, Payload));
+  }
+  ExprResult List = S.ActOnInitList(Loc, Inits, EndLoc);
+  if (List.isInvalid())
+    return ExprError();
+  return S.BuildCompoundLiteralExpr(Loc, Ctx.getTrivialTypeSourceInfo(T, Loc),
+                                    EndLoc, List.get());
+}
+
+/// Add the public field \p Name of type \p T to \p RD, as tuples do.
+static void addCxField(ASTContext &Ctx, RecordDecl *RD, IdentifierInfo *Name,
+                       QualType T) {
+  auto *FD = FieldDecl::Create(Ctx, RD, SourceLocation(), SourceLocation(),
+                               Name, T, Ctx.getTrivialTypeSourceInfo(T),
+                               /*BitWidth=*/nullptr, /*Mutable=*/false,
+                               ICIS_NoInit);
+  FD->setAccess(AS_public);
+  RD->addDecl(FD);
+}
+
+bool Sema::isCxPayloadEnum(const EnumDecl *ED) const {
+  return ED && ED->hasAttr<CxPayloadRecordAttr>();
+}
+
+RecordDecl *Sema::getCxPayloadRecord(const EnumDecl *ED) const {
+  const auto *A = ED ? ED->getAttr<CxPayloadRecordAttr>() : nullptr;
+  return A ? A->getRecord() : nullptr;
+}
+
+QualType Sema::getCxTagSpellingType(const TagDecl *TD, QualType T) {
+  if (!getLangOpts().CX)
+    return T;
+  const auto *ED = dyn_cast_or_null<EnumDecl>(TD);
+  if (const EnumDecl *Def = ED ? ED->getDefinition() : nullptr)
+    ED = Def;
+  if (RecordDecl *RD = getCxPayloadRecord(ED))
+    return Context.getTagType(ElaboratedTypeKeyword::None, std::nullopt, RD,
+                              /*OwnsTag=*/false);
+  return T;
+}
+
+void Sema::ActOnCxPayloadEnumStart(EnumDecl *ED) {
+  // The values are a struct with a name no source can spell, next to the
+  // enum. It is implicit, so -ast-print shows the enum instead.
+  auto *RD = RecordDecl::Create(
+      Context, TagTypeKind::Struct, ED->getDeclContext(), ED->getBeginLoc(),
+      ED->getLocation(), &Context.Idents.get("enum " + ED->getName().str()));
+  RD->setImplicit();
+  RD->addAttr(CxPayloadEnumAttr::CreateImplicit(Context, ED));
+  ED->addAttr(CxPayloadRecordAttr::CreateImplicit(Context, RD));
+  ED->getDeclContext()->addDecl(RD);
+  RD->startDefinition();
+}
+
+void Sema::ActOnCxEnumPayload(Decl *D, ArrayRef<QualType> Types,
+                              ArrayRef<const IdentifierInfo *> Labels,
+                              ArrayRef<SourceLocation> Locs,
+                              SourceLocation LParen) {
+  auto *ECD = dyn_cast_or_null<EnumConstantDecl>(D);
+  auto *ED = ECD ? dyn_cast<EnumDecl>(ECD->getDeclContext()) : nullptr;
+  if (!ED || !isCxPayloadEnum(ED) || Types.empty())
+    return;
+  QualType EnumTy = Context.getCanonicalTagType(ED);
+  if (ED->getIntegerTypeSourceInfo() && !ED->isInvalidDecl()) {
+    Diag(ED->getLocation(), diag::err_cx_enum_payload_backing) << EnumTy;
+    ED->setInvalidDecl();
+  }
+  QualType Values = getCxTagSpellingType(ED, EnumTy);
+  for (auto [T, Loc] : llvm::zip(Types, Locs))
+    if (Context.hasSameUnqualifiedType(T, Values)) {
+      Diag(Loc, diag::err_cx_enum_recursive_payload) << EnumTy;
+      return;
+    }
+  QualType Payload;
+  if (Types.size() > 1) {
+    Payload = BuildCxTupleType(Types, Labels, Locs, LParen);
+    if (Payload.isNull())
+      return;
+  } else {
+    // One element is the payload itself, checked as a tuple element is.
+    Payload = Types[0];
+    if (Payload->isVoidType() || Payload->isFunctionType() ||
+        Payload->isVariablyModifiedType()) {
+      Diag(Locs[0], diag::err_cx_tuple_element_type) << Payload;
+      return;
+    }
+    if (RequireCompleteType(Locs[0], Payload,
+                            diag::err_cx_tuple_element_incomplete))
+      return;
+  }
+  SmallVector<const IdentifierInfo *, 4> Written;
+  for (const IdentifierInfo *L : Labels)
+    Written.push_back(L ? L : &Context.Idents.get("_"));
+  ECD->addAttr(CxEnumPayloadAttr::CreateImplicit(
+      Context, Context.getTrivialTypeSourceInfo(Payload, LParen),
+      Written.data(), Written.size()));
+}
+
+void Sema::completeCxPayloadEnum(EnumDecl *ED) {
+  RecordDecl *RD = getCxPayloadRecord(ED);
+  if (!RD || RD->isCompleteDefinition())
+    return;
+  // One union member per case with a payload, named by the case.
+  auto *U = RecordDecl::Create(Context, TagTypeKind::Union, RD,
+                               SourceLocation(), SourceLocation(), nullptr);
+  U->setImplicit();
+  U->startDefinition();
+  for (EnumConstantDecl *ECD : ED->enumerators())
+    if (const auto *A = ECD->getAttr<CxEnumPayloadAttr>())
+      addCxField(Context, U, ECD->getIdentifier(), A->getPayload());
+  U->completeDefinition();
+  RD->addDecl(U);
+  addCxField(Context, RD, &Context.Idents.get("$tag"),
+             Context.getCanonicalTagType(ED));
+  addCxField(Context, RD, &Context.Idents.get("$payload"),
+             Context.getTagType(ElaboratedTypeKeyword::None, std::nullopt, U,
+                                /*OwnsTag=*/false));
+  RD->completeDefinition();
+}
+
+ExprResult Sema::ActOnCxEnumCaseCall(EnumDecl *ED, IdentifierInfo *Name,
+                                     SourceLocation NameLoc,
+                                     SourceLocation LParen,
+                                     ArrayRef<const IdentifierInfo *> Labels,
+                                     ArrayRef<SourceLocation> LabelLocs,
+                                     MultiExprArg Args, SourceLocation RParen) {
+  EnumConstantDecl *ECD = lookupCxEnumCase(*this, ED, Name, NameLoc);
+  if (!ECD)
+    return ExprError();
+  QualType EnumTy = Context.getCanonicalTagType(ED);
+  const auto *A = ECD->getAttr<CxEnumPayloadAttr>();
+  if (!A) {
+    Diag(LParen, diag::err_cx_enum_no_payload) << Name << EnumTy;
+    return ExprError();
+  }
+  unsigned Count = A->labels_size();
+  if (Args.size() != Count) {
+    Diag(LParen, diag::err_cx_enum_payload_count)
+        << Name << EnumTy << Count << unsigned(Args.size());
+    return ExprError();
+  }
+  QualType PayloadTy = A->getPayload();
+  Expr *Payload;
+  if (Count == 1) {
+    // The one label, when both sides write one, must agree.
+    const IdentifierInfo *Declared = *A->labels_begin();
+    if (Labels[0] && !Declared->isStr("_") && Labels[0] != Declared) {
+      Diag(LabelLocs[0], diag::err_cx_enum_payload_label)
+          << Name << Declared << Labels[0];
+      return ExprError();
+    }
+    Payload = Args[0];
+  } else {
+    // A label mismatch is diagnosed once, here; the value is not built.
+    DiagnosticErrorTrap Trap(Diags);
+    ExprResult Lit = ActOnCxTupleLiteral(LParen, Args, Labels, LabelLocs, RParen);
+    if (Lit.isInvalid())
+      return ExprError();
+    Payload = retargetCxTupleLiteral(Lit.get(), PayloadTy);
+    if (!Payload || isa<RecoveryExpr>(Payload) || Trap.hasErrorOccurred())
+      return ExprError();
+  }
+  return buildCxEnumValue(*this, ED, ECD, NameLoc, Payload, RParen);
+}
+
 EnumDecl *Sema::getCxEnum(QualType T) {
   if (!getLangOpts().CX || T.isNull())
     return nullptr;
+  // The struct of a payload enum's values stands for the enum.
+  if (const auto *RT = T->getAs<RecordType>()) {
+    const auto *A = RT->getDecl()->getAttr<CxPayloadEnumAttr>();
+    return A ? A->getPayloadEnum() : nullptr;
+  }
   const auto *ET = T->getAs<EnumType>();
   if (!ET)
     return nullptr;
@@ -1858,16 +2066,17 @@ EnumDecl *Sema::getCxEnumQualifier(IdentifierInfo *Name, SourceLocation Loc,
 
 ExprResult Sema::ActOnCxEnumCase(EnumDecl *ED, IdentifierInfo *Name,
                                  SourceLocation NameLoc) {
-  for (NamedDecl *D : ED->lookup(Name))
-    if (auto *ECD = dyn_cast<EnumConstantDecl>(D)) {
-      if (DiagnoseUseOfDecl(ECD, NameLoc))
-        return ExprError();
-      MarkAnyDeclReferenced(NameLoc, ECD, /*OdrUse=*/false);
-      return BuildDeclRefExpr(ECD, ECD->getType(), VK_PRValue, NameLoc);
-    }
-  Diag(NameLoc, diag::err_cx_enum_no_case)
-      << Name << Context.getCanonicalTagType(ED);
-  return ExprError();
+  EnumConstantDecl *ECD = lookupCxEnumCase(*this, ED, Name, NameLoc);
+  if (!ECD)
+    return ExprError();
+  if (!isCxPayloadEnum(ED))
+    return BuildDeclRefExpr(ECD, ECD->getType(), VK_PRValue, NameLoc);
+  if (ECD->hasAttr<CxEnumPayloadAttr>()) {
+    Diag(NameLoc, diag::err_cx_enum_needs_payload)
+        << Name << Context.getCanonicalTagType(ED) << Name->getName();
+    return ExprError();
+  }
+  return buildCxEnumValue(*this, ED, ECD, NameLoc, nullptr, NameLoc);
 }
 
 QualType Sema::getCxCaseArgumentType(Expr *Callee, unsigned Index) {

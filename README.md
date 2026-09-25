@@ -54,6 +54,7 @@ Implemented and tested so far:
 - generated construction, field defaults, and custom initializers
 - tuple types, literals, and destructuring
 - raw and simple enums with scoped cases, `.case` syntax, and `rawValue`
+- payload enums whose cases carry tuple payloads
 - implicit tag names and optional semicolons
 - PCH, preprocessing, code completion, and tooling support
 

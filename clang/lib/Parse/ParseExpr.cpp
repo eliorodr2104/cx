@@ -761,6 +761,21 @@ ExprResult Parser::ParseBuiltinPtrauthTypeDiscriminator() {
       /*isType=*/true, Ty.get().getAsOpaquePtr(), SourceRange(Loc, EndLoc));
 }
 
+ExprResult Parser::ParseCxEnumCaseSuffix(EnumDecl *ED, IdentifierInfo *Case,
+                                         SourceLocation CaseLoc) {
+  // `.location(10, 4)`: a case of a payload enum with its payload.
+  if (Tok.isNot(tok::l_paren) || !Actions.isCxPayloadEnum(ED))
+    return Actions.ActOnCxEnumCase(ED, Case, CaseLoc);
+  ExprVector Args;
+  SmallVector<const IdentifierInfo *, 4> Labels;
+  SmallVector<SourceLocation, 4> LabelLocs;
+  SourceLocation LParen, RParen;
+  if (!ParseCxLabeledArguments(Args, Labels, LabelLocs, LParen, RParen))
+    return ExprError();
+  return Actions.ActOnCxEnumCaseCall(ED, Case, CaseLoc, LParen, Labels,
+                                     LabelLocs, Args, RParen);
+}
+
 ExprResult
 Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
                             bool &NotCastExpr,
@@ -923,7 +938,7 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
         IdentifierInfo *Case = Tok.getIdentifierInfo();
         SourceLocation CaseLoc = ConsumeToken();
         return ParsePostfixExpressionSuffix(
-            Actions.ActOnCxEnumCase(ED, Case, CaseLoc));
+            ParseCxEnumCaseSuffix(ED, Case, CaseLoc));
       }
     // Cx: a struct type name followed by '(' is generated construction, not a
     // call. A type name in expression position is not valid C.
@@ -1350,7 +1365,7 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
         IdentifierInfo *Case = Tok.getIdentifierInfo();
         SourceLocation CaseLoc = ConsumeToken();
         return ParsePostfixExpressionSuffix(
-            Actions.ActOnCxEnumCase(ED, Case, CaseLoc));
+            ParseCxEnumCaseSuffix(ED, Case, CaseLoc));
       }
     if (isStartOfObjCClassMessageMissingOpenBracket()) {
       TypeResult Type = getTypeAnnotation(Tok);
@@ -1676,7 +1691,7 @@ Parser::ParseCastExpression(CastParseKind ParseKind, bool isAddressOfOperand,
         return ExprError();
       }
       return ParsePostfixExpressionSuffix(
-          Actions.ActOnCxEnumCase(ED, Case, CaseLoc));
+          ParseCxEnumCaseSuffix(ED, Case, CaseLoc));
     }
     goto ExpectedExpression;
 

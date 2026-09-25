@@ -1239,6 +1239,9 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     // TypeQuals handled by caller.
     Result = Context.getTagType(Keyword, DS.getTypeSpecScope().getScopeRep(), D,
                                 DS.isTypeSpecOwned());
+    // Cx: `enum Token` names the struct of a payload enum's values.
+    if (S.getLangOpts().CX)
+      Result = S.getCxTagSpellingType(D, Result);
     break;
   }
   case DeclSpec::TST_typename: {

@@ -545,7 +545,8 @@ void DeclPrinter::VisitDeclContext(DeclContext *DC, bool Indent) {
     else if (isa<EnumConstantDecl>(*D)) {
       DeclContext::decl_iterator Next = D;
       ++Next;
-      if (Next != DEnd)
+      // Cx: each case of a payload enum is its own `case` clause.
+      if (Next != DEnd && !cast<EnumDecl>(DC)->hasAttr<CxPayloadRecordAttr>())
         Terminator = ",";
     } else
       Terminator = ";";
@@ -675,11 +676,28 @@ void DeclPrinter::VisitRecordDecl(RecordDecl *D) {
 void DeclPrinter::VisitEnumConstantDecl(EnumConstantDecl *D) {
   // Cx: one `case` clause holds every case, separated by the commas the
   // declaration context prints.
+  // A payload enum gives every case its own clause, with its payload.
   if (const auto *ED = dyn_cast<EnumDecl>(D->getDeclContext());
       ED && ED->isScoped() && Context.getLangOpts().CX &&
-      *ED->enumerator_begin() == D)
+      (*ED->enumerator_begin() == D || ED->hasAttr<CxPayloadRecordAttr>()))
     Out << "case ";
   Out << *D;
+  if (const auto *A = D->getAttr<CxEnumPayloadAttr>()) {
+    QualType Payload = A->getPayload();
+    SmallVector<QualType, 4> Elems;
+    if (A->labels_size() > 1)
+      for (const FieldDecl *FD : Payload->castAs<RecordType>()->getDecl()->fields())
+        Elems.push_back(FD->getType());
+    else
+      Elems.push_back(Payload);
+    Out << '(';
+    for (auto [I, Label] : llvm::enumerate(A->labels())) {
+      if (I)
+        Out << ", ";
+      Elems[I].print(Out, Policy, Label->isStr("_") ? "" : Label->getName());
+    }
+    Out << ')';
+  }
   if (std::optional<std::string> Attrs = prettyPrintAttributes(D))
     Out << ' ' << *Attrs;
   if (Expr *Init = D->getInitExpr()) {
