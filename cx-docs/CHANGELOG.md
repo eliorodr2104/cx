@@ -1,32 +1,28 @@
 # Documentation Change History
 
 This file records changes to the Cx documentation. Compiler implementation changes
-belong in the [milestone records](Compiler/milestones/README.md).
+belong in the [milestone records](compiler/milestones/README.md).
 
 ## 2026-09-25
 
 ### Editorial Review
 
-- Replaced the upstream LLVM README with a Cx project overview, build instructions,
-  a runnable example, test guidance, and direct links to the documentation.
+- Replaced the upstream LLVM README with a Cx project overview, motivation, build
+  instructions, a runnable example, test guidance, and direct links to the
+  documentation.
 - Rewrote the documentation index around reader goals and current implementation
   status.
-- Removed references to chats, assistants, attached archives, delivery packages, and
-  other authoring-process details.
-- Applied consistent English wording across project documentation.
-- Removed em dashes and checked the documentation for emoji.
+- Split the milestone index into features and hardening passes.
+- Renamed the `Compiler` directory to `compiler`.
 - Tightened status language so design proposals do not read as implemented features.
-- Applied Apple Human Interface Guidelines writing principles where they fit technical
-  documentation: direct language, concise instructions, consistent terms, and clear
-  outcomes.
 
 ### Technical Corrections
 
 - Updated compiler documentation to recognize that `clangx` and `clang -x cx` are
   implemented rather than planned interfaces.
 - Made milestone records the authoritative source for implementation status.
-- Reframed validation around the repository contents instead of obsolete archive
-  counts and hashes.
+- Removed the file manifest and the validation register, which duplicated the
+  milestone records.
 
 ## 2026-09-20
 

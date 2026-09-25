@@ -7,7 +7,11 @@ known limitations; benchmark checkpoint if relevant; and a runnable demonstratio
 
 A milestone without a record here is not started. A lettered suffix (M3a) is
 one slice of a roadmap row that is being implemented in stages; a dotted number
-(M1.1) is an extra milestone inserted between two rows.
+(M1.1) is an extra milestone inserted between two rows. Hardening passes
+(M4.1 onward) fix gaps and bugs found in completed features rather than adding new
+ones.
+
+## Features
 
 - [M0: Pinned baseline, driver mode, `-x cx`, language options](M0.md): **Completed**
 - [M1: `var`, `let`, contextual `null`](M1.md): **Completed**
@@ -22,6 +26,12 @@ one slice of a roadmap row that is being implemented in stages; a dotted number
 - [M4d: Generated memberwise construction](M4d.md): **Completed**
 - [M4e: Declaration-site field defaults](M4e.md): **Completed**
 - [M4f: Custom initializers](M4f.md): **Completed**
+- [M5a: Implicit tag names](M5a.md): **Completed**
+- [M5b: Optional semicolons](M5b.md): **Completed**
+- [M6a: Tuples](M6a.md): **Completed**
+
+## Hardening passes
+
 - [M4.1: Close the access and method-call holes](M4.1.md): **Completed**
 - [M4.2: Close the M2–M4 leftovers](M4.2.md): **Completed**
 - [M4.3: Cx in code completion, and two method bugs](M4.3.md): **Completed**
@@ -29,6 +39,3 @@ one slice of a roadmap row that is being implemented in stages; a dotted number
 - [M4.5: Access control, field defaults and construction agree with C initialization](M4.5.md): **Completed**
 - [M4.6: Linkage and mangling that link, and don't collide](M4.6.md): **Completed**
 - [M4.7: Tooling and the preprocessor keep Cx meaning](M4.7.md): **Completed**
-- [M5a: Implicit tag names](M5a.md): **Completed**
-- [M5b: Optional semicolons](M5b.md): **Completed**
-- [M6a: Tuples](M6a.md): **Completed**

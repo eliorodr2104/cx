@@ -69,6 +69,3 @@ Performance experiments are attached to implementation milestones in
 [Benchmarking](benchmarking.md). Unit/regression tests can enforce deliberate invariants
 such as no method storage in a struct. Do not claim that all optimized closure calls
 must always inline.
-
-Editorial validation is separate from compiler execution. See
-[Documentation Validation](../VALIDATION.md).

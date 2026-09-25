@@ -22,4 +22,4 @@ B01-B08 measure implemented alternatives. G06-G09 establish correctness and modu
 
 ## Related contracts
 
-[ABI index](../abi/README.md), [Runtime index](../runtime/README.md), [Benchmarks](../Compiler/benchmarking.md).
+[ABI index](../abi/README.md), [Runtime index](../runtime/README.md), [Benchmarks](../compiler/benchmarking.md).

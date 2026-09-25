@@ -64,4 +64,4 @@ be used as a non-throwing C function pointer by ignoring its error channel.
 Explain which label, type, effect, or constraint made the relevant candidates
 inapplicable. Show source declarations and a bounded set of useful alternatives.
 No selection depends on link order, declaration order, or an arbitrary "closest"
-score. See [Diagnostics](../Compiler/diagnostics.md).
+score. See [Diagnostics](../compiler/diagnostics.md).

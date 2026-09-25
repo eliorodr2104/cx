@@ -11,8 +11,8 @@ documents when changing the frontend.
 ## Start Here
 
 1. [Language Guide](language/README.md) describes Cx syntax and semantics.
-2. [Milestone Records](Compiler/milestones/README.md) lists implemented compiler work.
-3. [Implementation Roadmap](Compiler/implementation-roadmap.md) shows dependencies and
+2. [Milestone Records](compiler/milestones/README.md) lists implemented compiler work.
+3. [Implementation Roadmap](compiler/implementation-roadmap.md) shows dependencies and
    later milestones.
 4. [Decisions](DECISIONS.md) records accepted directions and provisional contracts.
 5. [Open Design Gates](OPEN-ISSUES.md) lists decisions required before specific
@@ -23,15 +23,12 @@ documents when changing the frontend.
 | Area | Use It For |
 | --- | --- |
 | [Language](language/README.md) | Syntax, type rules, source behavior, and C compatibility |
-| [Compiler](Compiler/README.md) | Clang integration, analysis, lowering, testing, and milestones |
+| [Compiler](compiler/README.md) | Clang integration, analysis, lowering, testing, and milestones |
 | [Design](design/README.md) | Design choices, alternatives, consequences, and unresolved gates |
 | [ABI](abi/README.md) | Values, calls, symbols, errors, C bridges, and build artifacts |
 | [Runtime](runtime/README.md) | Ownership, weak references, initialization, and cleanup |
 | [Standard Library](stdlib/README.md) | Collections, text, ranges, protocols, Optional, Result, and Span |
 | [Development Helpers](dev/README.md) | Local commands for building, testing, and editor integration |
-
-The capitalized `Compiler` directory is retained for path compatibility. Use its exact
-case in links and scripts.
 
 ## How to Read Status
 
@@ -47,5 +44,4 @@ benchmark results.
 ## Reference Documents
 
 - [Change History](CHANGELOG.md)
-- [Documentation Validation](VALIDATION.md)
 - [Technical Sources](SOURCES.md)

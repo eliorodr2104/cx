@@ -80,4 +80,4 @@ Passing several filenames to an ordinary Clang driver does not automatically mer
 their ASTs. Missing generic implementation metadata is an actionable build error.
 
 See [Module and Generic ABI](../abi/modules-and-generics.md) and
-[the dependency-correct roadmap](../Compiler/implementation-roadmap.md).
+[the dependency-correct roadmap](../compiler/implementation-roadmap.md).

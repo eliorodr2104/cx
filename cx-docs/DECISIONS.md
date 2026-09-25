@@ -4,7 +4,7 @@ Last reviewed: 2026-09-25.
 
 This register separates accepted product direction from provisional design and from
 contracts that must be completed at a specific implementation milestone. Use the
-[milestone records](Compiler/milestones/README.md) for current implementation status.
+[milestone records](compiler/milestones/README.md) for current implementation status.
 
 ## Status vocabulary
 

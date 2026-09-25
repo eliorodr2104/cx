@@ -52,7 +52,7 @@ There are compatibility problems that keyword handling alone cannot solve:
 - An ordinary C tag name need not be available as an ordinary type identifier.
 - Trailing closures can overlap with a call followed by a compound statement.
 
-The [parser contract](../Compiler/parser.md) and [G01](../OPEN-ISSUES.md#g01--c-grammar-collisions)
+The [parser contract](../compiler/parser.md) and [G01](../OPEN-ISSUES.md#g01--c-grammar-collisions)
 require explicit disambiguation tests before those extensions are enabled.
 
 ## Opt-in modules

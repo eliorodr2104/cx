@@ -22,4 +22,4 @@ G09: macro expansion ownership, `-E` and PCH round trips, header guards/conditio
 
 ## Related contracts
 
-[Modules](../language/modules.md), [Module artifacts](../Compiler/module-artifacts.md), [Module ABI](../abi/modules-and-generics.md).
+[Modules](../language/modules.md), [Module artifacts](../compiler/module-artifacts.md), [Module ABI](../abi/modules-and-generics.md).

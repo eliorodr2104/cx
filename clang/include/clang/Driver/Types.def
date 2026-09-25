@@ -58,7 +58,7 @@ TYPE("objective-c++",            ObjCXX,       PP_ObjCXX,       "mm",     phases
 TYPE("hlsl",                     HLSL,         PP_CXX,          "hlsl",   phases::Preprocess, phases::Compile, phases::Backend, phases::Assemble)
 
 // Cx: the selected C dialect plus Cx capability. Deliberately not a new
-// C standard matrix (see cx-docs/Compiler/language-mode.md).
+// C standard matrix (see cx-docs/compiler/language-mode.md).
 TYPE("cx-cpp-output",            PP_CX,        INVALID,         "i",      phases::Compile, phases::Backend, phases::Assemble, phases::Link)
 TYPE("cx",                       CX,           PP_CX,           "c",      phases::Preprocess, phases::Compile, phases::Backend, phases::Assemble, phases::Link)
 

@@ -99,5 +99,5 @@ not merely a pointer-returning convenience method.
 ## Cx authority
 
 The [decision register](DECISIONS.md), [open design gates](OPEN-ISSUES.md), and
-[milestone records](Compiler/milestones/README.md) define Cx-specific behavior. The
+[milestone records](compiler/milestones/README.md) define Cx-specific behavior. The
 external sources above provide technical context but do not override project decisions.

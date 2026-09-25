@@ -63,7 +63,7 @@ modifiers need dedicated tests against the chosen deduction rules.
 only as `{ $0 > 0 }` needs a contextual parameter type or an explicitly typed form.
 
 Multiple declarators, self-reference, earlier-binding scope, qualifiers, and arrays
-are listed in [the feature matrix](../Compiler/feature-matrix.md).
+are listed in [the feature matrix](../compiler/feature-matrix.md).
 
 ## Stored fields
 

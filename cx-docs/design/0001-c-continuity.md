@@ -22,4 +22,4 @@ G01 and G09. Record the actual Clang SHA and selected compatibility modes. Add c
 
 ## Related contracts
 
-[C compatibility](../language/c-compatibility.md), [Compiler contract](../Compiler/compatibility.md).
+[C compatibility](../language/c-compatibility.md), [Compiler contract](../compiler/compatibility.md).

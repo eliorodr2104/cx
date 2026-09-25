@@ -40,6 +40,6 @@ to start the compiler. They are not implicitly accepted under vague "modern C" g
 
 Error-channel ABI selection, inline existential-buffer size, code-size/specialization
 tradeoffs, and ARC representation performance are checkpointed in
-[Compiler/benchmarking.md](../Compiler/benchmarking.md). These experiments happen when
+[compiler/benchmarking.md](../compiler/benchmarking.md). These experiments happen when
 implementations exist. They must not be confused with correctness decisions such as
 whether a weak load can race with destruction.

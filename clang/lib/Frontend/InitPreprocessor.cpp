@@ -398,7 +398,7 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
                                                const FrontendOptions &FEOpts,
                                                MacroBuilder &Builder) {
   // Cx availability macro. The spelling and final version encoding are
-  // provisional (cx-docs/Compiler/language-mode.md); the selected C standard
+  // provisional (cx-docs/compiler/language-mode.md); the selected C standard
   // keeps describing itself through the usual __STDC_VERSION__ macro.
   if (LangOpts.CX)
     Builder.defineMacro("__CX__", "1");

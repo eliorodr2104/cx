@@ -5,13 +5,46 @@ without replacing C's source model, toolchain, or ABI. Existing `.c` and `.h` fi
 remain valid inputs, and plain C behavior stays available through the normal Clang
 driver.
 
-This repository is a fork of the LLVM monorepo. Cx compiler work lives in `clang`,
-Cx regression tests live in `clang/test/Cx`, and the language and implementation
-documentation lives in [`cx-docs`](cx-docs/README.md).
+```c
+#module Demo
+#include <stdio.h>
+
+(int, int) divmod(int a, int b) { return (a / b, a % b) }
+
+struct Counter {
+  int value
+  void add(int by amount) { self.value += amount }
+  ~mutating int current() { return value }
+}
+
+int main(void) {
+  var c = Counter(value: 40)
+  c.add(by: 2)
+
+  let (q, r) = divmod(17, 5)
+  printf("answer = %d, 17 / 5 = %d r %d\n", c.current(), q, r)
+  return 0
+}
+```
+
+## Why Cx
+
+C++, Zig, C3 and similar languages ask you to move to a new language, and usually
+rewrite existing code or its build. Cx takes the opposite approach. A C project adopts
+it one file at a time: the rest of the code, the headers, the preprocessor and the
+build stay as they are. Files without a `#module`, and everything declared in ordinary
+C headers, keep their C symbols, so Cx and C code link together. New syntax is only
+accepted where C could not read the code, so no valid C program changes meaning.
+
+See the [language philosophy](cx-docs/language/philosophy.md) and the
+[C continuity decision](cx-docs/design/0001-c-continuity.md).
 
 ## Current Status
 
-The merged compiler work currently includes:
+Cx is experimental. The grammar, the symbol mangling and the ABI of Cx declarations
+will change, and nothing here is ready for production code.
+
+Implemented and tested so far:
 
 - the `clangx` driver mode and explicit `clang -x cx` input selection
 - `var`, `let`, and contextual `null`
@@ -19,50 +52,52 @@ The merged compiler work currently includes:
 - Cx linkage, argument labels, overloads, and compound references
 - struct methods, `self`, `~mutating`, continuations, and access control
 - generated construction, field defaults, and custom initializers
-- PCH, preprocessing, code completion, and tooling identity support
+- tuple types, literals, and destructuring
 - implicit tag names and optional semicolons
+- PCH, preprocessing, code completion, and tooling support
 
-Each completed feature has a scoped implementation record with tests, known
-limitations, and a runnable example. See the
-[milestone index](cx-docs/Compiler/milestones/README.md) for the authoritative
-status. Design documents describe both implemented behavior and later work, so they
-must not be read as a release claim.
+Each feature has an implementation record with tests, known limitations, and a
+runnable example. The [milestone index](cx-docs/compiler/milestones/README.md) is the
+authoritative status. Design documents also describe later work, so they must not be
+read as a release claim.
 
 ## Build
 
-Configure a development build with assertions enabled:
+This repository is a fork of the LLVM monorepo. A partial clone avoids downloading
+the full LLVM history up front:
+
+```sh
+git clone --filter=blob:none --single-branch -b cx/main https://github.com/eliorodr2104/llvm-project cx
+cd cx
+```
+
+Configure and build the compiler:
 
 ```sh
 cmake -S llvm -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DLLVM_ENABLE_ASSERTIONS=ON \
-  -DLLVM_ENABLE_PROJECTS='clang;clang-tools-extra'
+  -DLLVM_ENABLE_PROJECTS=clang
 
-ninja -C build clang clangd
+ninja -C build clang
 ```
 
-The project also documents a faster macOS configuration with shared LLVM and Clang
-libraries in [Clang Integration](cx-docs/Compiler/clang-integration.md).
+Add `clang-tools-extra` to the projects and build `clangd` for editor support. A
+faster macOS configuration with shared libraries is described in
+[Clang Integration](cx-docs/compiler/clang-integration.md).
 
 ## Try Cx
 
-Save this as `demo.c`:
-
-```c
-#module Demo
-
-int main(void) {
-  let answer = 42
-  return answer == 42 ? 0 : 1
-}
-```
-
-Compile it with the explicit language mode:
+Save the example above as `demo.c`, then compile and run it:
 
 ```sh
-./build/bin/clang -x cx demo.c -o demo
+./build/bin/clangx -isysroot "$(xcrun --show-sdk-path)" demo.c -o demo
 ./demo
 ```
+
+On macOS a locally built Clang has no default SDK, so `-isysroot` is required to find
+the system headers and libraries. Drop it on Linux. `clangx` reads `.c` files as Cx;
+`clang -x cx` does the same through the ordinary driver.
 
 The optional Fish helpers in [`cx-docs/dev`](cx-docs/dev/README.md) provide a
 checkout-aware `clangx` command and Helix integration.
@@ -77,20 +112,23 @@ Run the Cx regression suite after compiler changes:
 
 Run broader Clang tests when a change affects shared C parsing, semantic analysis,
 serialization, code generation, or tooling. The
-[testing guide](cx-docs/Compiler/testing.md) explains the expected coverage for each
+[testing guide](cx-docs/compiler/testing.md) explains the expected coverage for each
 kind of feature.
 
 ## Documentation
 
 - [Cx documentation index](cx-docs/README.md)
 - [Language guide](cx-docs/language/README.md)
-- [Compiler design](cx-docs/Compiler/README.md)
-- [Implementation roadmap](cx-docs/Compiler/implementation-roadmap.md)
+- [Compiler design](cx-docs/compiler/README.md)
+- [Implementation roadmap](cx-docs/compiler/implementation-roadmap.md)
 - [Decisions](cx-docs/DECISIONS.md)
 - [Open design gates](cx-docs/OPEN-ISSUES.md)
 
-## LLVM
+## License
 
-For upstream LLVM build instructions, contribution guidance, community links, and
-project policies, see the [LLVM documentation](https://llvm.org/docs/) and the
+Cx is built on LLVM and Clang and is distributed under the same license, the Apache
+License v2.0 with LLVM Exceptions. See [LICENSE.TXT](LICENSE.TXT).
+
+For upstream LLVM build instructions, contribution guidance, and project policies,
+see the [LLVM documentation](https://llvm.org/docs/) and the
 [LLVM project repository](https://github.com/llvm/llvm-project).

@@ -5,7 +5,7 @@ records what remains to make each affected feature precise. It does not ask for 
 answers before M0/M1, and it does not classify every unanswered question as a benchmark.
 
 A **gate** fixes semantics/compatibility before enabling its feature. A **checkpoint**
-measures correct implementations afterward. See [Compiler/benchmarking.md](Compiler/benchmarking.md).
+measures correct implementations afterward. See [compiler/benchmarking.md](compiler/benchmarking.md).
 
 <a id="g01--c-grammar-collisions"></a>
 ## G01 - C grammar collisions
