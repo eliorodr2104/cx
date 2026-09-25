@@ -5,8 +5,7 @@ Cx supports low-bit tagging on supported pointer representations without a disti
 
 ```c
 enum NodeTag: PointerTag<Node> {
-    marked,
-    deleted
+    case marked, deleted
 }
 ```
 

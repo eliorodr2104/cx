@@ -10,8 +10,8 @@ protocol Error {
 }
 
 enum ParseError: Error {
-    invalidInput,
-    unexpectedToken(int)
+    case invalidInput
+    case unexpectedToken(int)
 }
 
 int parse(String text input) throw(ParseError)

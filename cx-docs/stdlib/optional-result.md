@@ -4,8 +4,8 @@
 
 ```c
 enum Optional<T> {
-    some(T),
-    none
+    case some(T)
+    case none
 }
 ```
 
@@ -30,8 +30,8 @@ No representation optimization may collapse distinct states.
 
 ```c
 enum Result<T, E> {
-    success(T),
-    failure(E)
+    case success(T)
+    case failure(E)
 }
 ```
 

@@ -5,6 +5,13 @@ belong in the [milestone records](compiler/milestones/README.md).
 
 ## 2026-09-25
 
+### Enum Design
+
+- Settled the Cx enum design: a body that uses `case` selects a Cx enum, with raw and
+  simple enums, payload enums, exhaustive switches without fallthrough, and option sets.
+- Updated the G01, G02, and G12 gates, the decision register, the roadmap, the enum ABI
+  notes, and every enum example to the `case` syntax.
+
 ### Editorial Review
 
 - Replaced the upstream LLVM README with a Cx project overview, motivation, build

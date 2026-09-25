@@ -5,44 +5,52 @@ It is not a mutually exclusive enum-state encoding.
 
 ```c
 enum Permission: OptionSet {
-    read,
-    write,
-    execute
+    case read, write, execute
 }
 
 Permission granted = [.read, .write]
 granted |= .execute
+if (granted.contains(.write)) grant()
 ```
 
-Each atomic case consumes one bit. Three atomic cases permit eight combinations,
-including the empty set. The compiler chooses an adequate backing representation
-unless a valid explicit backing type constrains it.
+`: OptionSet` after the name of a Cx enum, one whose body uses `case`, makes it an option
+set. An enum without `case` keeps its C23 meaning even when a type named `OptionSet` is
+visible. Cases take no payload and no `= value`.
 
-The exact underlying-type spelling/default policy remains subject to C-compatible
-enum disambiguation. PointerTag does not require the programmer to write a width.
+## Bits and representation
+
+The case at position i, in declaration order, is bit i. Three cases permit eight
+combinations, including the empty set. The backing type is the smallest unsigned integer
+that holds every bit: 8, 16, 32 or 64 bits. More than 64 cases is an error, not a
+truncation. The size and ABI of an option set are those of its backing integer.
+
+## Values and literals
+
+`.read` is a set holding one flag. `[.read, .write]` is a set literal and `[]` the empty
+set, both valid where an option set is expected. A `[` cannot begin a C expression, so
+the literal changes no C program.
 
 ## Algebra
 
-The desired shared set surface includes union, intersection, symmetric difference,
-difference, membership, subset/superset, and disjointness:
+| Operation | Meaning |
+| --- | --- |
+| `a \| b` | union |
+| `a & b` | intersection |
+| `a ^ b` | symmetric difference |
+| `a - b` | difference |
+| `~a` | complement within the declared bits |
+| `\|=`, `&=`, `^=`, `-=` | update the left operand, evaluated once |
+| `==`, `!=` | equality |
+| `a.contains(b)` | every flag of `b` is in `a` |
+| `a.isSubset(of: b)`, `a.isSuperset(of: b)` | set inclusion |
+| `a.isDisjoint(with: b)` | no flag in common |
+| `a.rawValue` | the bitmask as the backing integer |
 
-```c
-var both       = a & b
-var either     = a | b
-var different  = a ^ b
-var remaining  = a - b
-
-bool separate = a.isDisjoint(with: b)
-```
-
-Operations produce the same option-set type. Compound assignments update a mutable
-binding once. `join` may be an alias for union if adopted; the canonical API naming
-remains a library decision, not a new semantic operation.
-
-Complement `~` needs a defined universe. For a closed option set, the recommended
-rule is complement within declared valid bits, not blindly setting every padding or
-future bit. Raw imported bitmasks need their own checked/unchecked construction
-contract before this is frozen.
+Operands are option sets of the same type; a `.case` or set literal takes the other
+operand's type. An option set does not convert to or from an integer and is not a
+condition by itself: `if (p & .read)` is an error, and `p.contains(.read)` states the
+test. Ordering, shifts, and other arithmetic do not apply, and an option set cannot be
+the condition of a switch.
 
 ## Protocol integration
 
@@ -51,6 +59,5 @@ methods but must not change the underlying flag interpretation.
 
 ## Open surface details
 
-Explicit atomic/composite case values, import of unknown bits, empty literals, the
-backing integer default, and the exact complement universe are G12. The implementation
-must reject capacity overflow and duplicate atomic assignments rather than truncate.
+Construction from a raw bitmask and the treatment of unknown bits arrive with Optional.
+Explicit case bit values, composite cases, and an explicit backing type remain G12.

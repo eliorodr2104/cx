@@ -5,10 +5,10 @@ register is [OPEN-ISSUES](../OPEN-ISSUES.md).
 
 ## Before implementing the affected feature
 
-- **G01:** C grammar collisions: comma/tuple expressions, C23 raw enums, preprocessing
-  numbers, trailing closures, and implicit type-name lookup.
-- **G02:** exact same-name/optional label behavior, synthesized initializer call shapes,
-  and enum payload label rules.
+- **G01:** C grammar collisions: comma/tuple expressions, preprocessing numbers,
+  trailing closures, and implicit type-name lookup.
+- **G02:** exact same-name/optional label behavior and synthesized initializer call
+  shapes.
 - **G03:** the proposed generalization of `?` beyond classes/String, raw-pointer optional
   exceptions, and optional extraction/chaining syntax.
 - **G04:** cross-file continuations, defaults without a module, incomplete types, and
@@ -27,8 +27,8 @@ register is [OPEN-ISSUES](../OPEN-ISSUES.md).
   and literal inference.
 - **G11:** collection/iterator contracts, bounds failure, mutation invalidation, counts,
   and closure effect propagation in algorithms.
-- **G12:** enum/OptionSet raw-value policy, recursion, complement universe, exhaustive
-  switch/fallthrough, and binary schema compatibility.
+- **G12:** checked enum/OptionSet construction from raw values, recursive payloads,
+  composite and explicit OptionSet cases, and binary schema compatibility.
 
 ## Deliberately future
 

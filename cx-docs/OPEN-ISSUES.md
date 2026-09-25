@@ -20,7 +20,10 @@ scalar comma expressions. Use an explicit rule or opt-in, not arbitrary lookahea
 that changes a valid C program.
 
 **Evidence:** C/gnu dialect matrix, macro cases, `-E` round trips, and AST/behavior
-comparison. Modern raw-enum opt-in spelling remains a surface decision.
+comparison.
+
+**Resolved for enums:** a body that uses `case` selects a Cx enum; every other enum,
+including a C23 fixed-underlying enum, stays C. See [Enums](language/enums.md).
 
 <a id="g02--labels-and-synthesized-construction"></a>
 ## G02 - Labels and synthesized construction
@@ -31,8 +34,11 @@ Ordinary one-name parameters remain positional; two names introduce an explicit 
 Decide whether matching external and local names can use a shorter declaration, and
 whether a declared label can be omitted at a call. Do not infer either policy.
 Generated memberwise calls can expose field names without literal `int x x` source
-parameters; decide whether they also accept positional calls. Align enum payload
-naming, callable labels, trailing closure label omission, and default arguments.
+parameters; decide whether they also accept positional calls. Align callable labels,
+trailing closure label omission, and default arguments.
+
+**Resolved for enum payloads:** a payload is a tuple type, and construction follows
+tuple literal rules: labels are optional, but written labels must match.
 
 **Evidence:** declarations/implementations/callables/compound references all agree.
 
@@ -179,9 +185,16 @@ optional dictionary values, floating-point ordering, and allocation failure.
 
 **Before:** enum API/layout release (M6/M16).
 
-Specify recursive payload indirection, modern switch fallthrough/exhaustiveness,
-raw-value construction, unknown OptionSet bits, composite cases, backing-type defaults,
-complement universe, multi-flag membership naming, and public schema evolution.
+Specify recursive payload indirection, checked raw-value construction (with Optional),
+unknown OptionSet bits, explicit OptionSet bit values and backing types, composite
+cases, and public schema evolution.
+
+**Resolved:** a Cx switch has no fallthrough and must be exhaustive or have `default`;
+raw enums convert to integers only through `rawValue` and simple enums not at all;
+simple enums and option sets use the smallest unsigned integer that fits; complement
+stays within the declared bits; `contains` tests every flag of its argument. See
+[Enums](language/enums.md) and [Option Sets](language/optionsets.md).
+
 A raw nullable pointer does not provide an unused null niche. Enum replacement must
 preserve an aliased incoming payload before destroying the old payload.
 

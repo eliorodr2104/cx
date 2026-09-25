@@ -46,6 +46,11 @@ contracts that must be completed at a specific implementation milestone. Use the
 | Operators | Explicit associated operations; normal overload engine | Accepted; laws and compound-writeback gates |
 | Errors | Error protocol, throw/throw(E), try/do-catch; Result remains data | Accepted |
 | C error export | Automatic bridge/header when full C mapping is supported | Accepted direction; bridge ABI gated |
+| Cx enums | A body using `case` selects a Cx enum; other enums stay C | Accepted |
+| Raw/simple enums | Scoped cases, no implicit integer conversion, `rawValue` out only | Accepted |
+| Payload enums | Tuple payloads, tuple label rules, tag plus union layout | Accepted; recursion G12 |
+| Enum switch | No fallthrough, exhaustive or `default`, trap on invalid value | Accepted |
+| OptionSet | One bit per case, set literals, set algebra, `contains` | Accepted; raw import G12 |
 | PointerTag | Implicit OptionSet, low bits from alignment, no wrapper | Accepted direction; G05 boundaries |
 | Library | Optional, Result, Span, text, dynamic containers, ranges, protocols, Set/Dictionary | Accepted direction |
 | Optional text | String should support nil-capable optional use | Accepted direction |

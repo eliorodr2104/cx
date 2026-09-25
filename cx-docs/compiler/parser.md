@@ -39,8 +39,9 @@ provide an unambiguous form, but the unlabeled inference rule remains G01.
 ## C23 raw enums
 
 A fixed underlying type after `:` is already a C23 facility. It cannot alone select
-scoped/no-implicit-conversion Cx semantics. Payload cases or protocol conformance are
-Cx additions; modern raw enum opt-in still needs a rule.
+scoped/no-implicit-conversion Cx semantics. A body that uses `case` selects a Cx enum,
+since `case` cannot appear in a C enum body; every other enum, with or without a C23
+backing type, stays C. See [Enums](../language/enums.md).
 
 ## Numeric tokens and ranges
 

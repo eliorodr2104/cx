@@ -6,14 +6,17 @@ Ordinary C enums, including supported fixed-underlying C enums, keep the selecte
 representation and conversion behavior. A modern Cx raw enum needs an unambiguous
 source opt-in before stronger semantics can be assigned to it.
 
-A modern raw enum uses its declared backing integer. OptionSet stores a bitmask with
-a valid-bit policy. Standalone flag representation and pointer-tag bit placement
+A Cx raw enum, one whose body uses `case` and names a backing type, uses that backing
+integer. A simple Cx enum without a backing type uses the smallest unsigned integer that
+holds its cases. OptionSet stores a bitmask in the smallest unsigned integer that holds
+one bit per case; its complement is taken within the declared bits. Standalone flag representation and pointer-tag bit placement
 must not be confused.
 
 ## Payload enums
 
-The general model is a discriminant and storage large/aligned enough for the largest
-payload. Exactly one case's payload is alive. Copy/destruction dispatch only to that
+A payload enum is a struct holding a tag, a simple enum with one case per case, followed
+by a union of the payload tuples, with C struct layout. Exactly one case's payload is
+alive, and a zero-initialized value holds the first case. Copy/destruction dispatch only to that
 active payload's value operations.
 
 For reassignment, preserve the incoming value/ownership before destroying the old
