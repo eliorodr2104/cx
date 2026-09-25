@@ -72,6 +72,8 @@ class JumpScopeChecker {
   SmallVector<GotoScope, 48> Scopes;
   llvm::DenseMap<Stmt*, unsigned> LabelAndGotoScopes;
   SmallVector<Stmt*, 16> Jumps;
+  /// Cx: bodies of Cx switches, whose clauses are protected scopes.
+  llvm::SmallPtrSet<const Stmt *, 4> CxSwitchBodies;
 
   SmallVector<Stmt*, 4> IndirectJumps;
   SmallVector<LabelDecl *, 4> IndirectJumpTargets;
@@ -349,6 +351,10 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S,
     break;
 
   case Stmt::SwitchStmtClass:
+    // Cx: each clause of a Cx switch is entered only through its case, which
+    // binds its payload and never falls through.
+    if (this->S.getLangOpts().CX && Sema::isCxSwitch(cast<SwitchStmt>(S)))
+      CxSwitchBodies.insert(cast<SwitchStmt>(S)->getBody());
     // Evaluate the C++17 init stmt and condition variable
     // before entering the scope of the switch statement.
     if (Stmt *Init = cast<SwitchStmt>(S)->getInit()) {
@@ -682,6 +688,7 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S,
     // Cases, labels, attributes, and defaults aren't "scope parents".  It's also
     // important to handle these iteratively instead of recursively in
     // order to avoid blowing out the stack.
+    bool CxClause = CxSwitchBodies.count(S) && isa<SwitchCase>(SubStmt);
     while (true) {
       Stmt *Next;
       if (SwitchCase *SC = dyn_cast<SwitchCase>(SubStmt))
@@ -699,6 +706,15 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S,
 
       LabelAndGotoScopes[SubStmt] = ParentScope;
       SubStmt = Next;
+    }
+
+    if (CxClause) {
+      unsigned NewParentScope = Scopes.size();
+      Scopes.push_back(GotoScope(ParentScope,
+                                 diag::note_enters_cx_switch_clause, 0,
+                                 SubStmt->getBeginLoc()));
+      BuildScopeInformation(SubStmt, NewParentScope);
+      continue;
     }
 
     // Recursively walk the AST.

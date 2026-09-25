@@ -107,5 +107,5 @@ Every C/GNU standard, as in M0.
 - **Patterns** with values, nested patterns, guards, labels in bindings and
   `if case` are future work.
 - **A Cx switch needs a braced body.**
-- **`goto` into a clause** skips its bindings' initialization, as C allows for
-  any declaration.
+- ~~**`goto` into a clause** skips its bindings' initialization, as C allows for
+  any declaration.~~ Closed by [M6.2](M6.2.md): it is an error.

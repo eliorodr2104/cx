@@ -36,3 +36,34 @@ void rules(enum Direction d, Token t) {
     default: ;
   }
 }
+
+// A clause is entered only through its case, which binds its payload.
+void jumps(Token t, int n) {
+  if (n)
+    goto inside // expected-error {{cannot jump from this goto statement to its label}}
+  switch (t) {
+    case .integer(v): // expected-note {{jump enters a clause of a Cx switch}}
+    inside:
+      n = v
+    case .location(line, column):
+      if (line)
+        goto again // expected-error {{cannot jump from this goto statement to its label}}
+    case .end: // expected-note {{jump enters a clause of a Cx switch}}
+    again:
+      n = 0
+      goto done
+  }
+done:
+  // A clause may jump within itself, and a C switch keeps its fallthrough.
+  switch (t) {
+    case .end:
+    retry:
+      if (n--)
+        goto retry
+    default: ;
+  }
+  switch (n) {
+    case 0: goto one;
+    case 1: one: n = 2;
+  }
+}

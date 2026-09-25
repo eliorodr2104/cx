@@ -7315,6 +7315,8 @@ def note_enters_compound_literal_scope : Note<
 def note_enters_statement_expression : Note<
   "jump enters a statement expression">;
 def note_enters_defer_stmt : Note<"jump enters a defer statement">;
+def note_enters_cx_switch_clause : Note<
+  "jump enters a clause of a Cx switch">;
 
 def note_exits_cleanup : Note<
   "jump exits scope of variable with __attribute__((cleanup))">;
