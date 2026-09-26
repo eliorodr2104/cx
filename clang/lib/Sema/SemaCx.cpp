@@ -1300,6 +1300,26 @@ bool Sema::isCxFullyDefaulted(QualType T) {
                        : llvm::all_of(RD->fields(), Defaulted);
 }
 
+Expr *Sema::buildCxMemberDefaults(QualType T, SourceLocation Loc,
+                                  SmallVectorImpl<CxPathStep> &Path,
+                                  SmallVectorImpl<CxDependentDefault> &Dependent) {
+  if (const RecordDecl *RD = T->getAsRecordDecl())
+    return buildCxDefaults(const_cast<RecordDecl *>(RD)->getDefinition(), Loc,
+                           Path, Dependent);
+  // Each element of an array, in every dimension, at its own index.
+  if (const auto *CAT = Context.getAsConstantArrayType(T)) {
+    SmallVector<Expr *, 8> Items;
+    for (uint64_t I = 0, N = CAT->getZExtSize(); I != N; ++I) {
+      Path.push_back({nullptr, I});
+      Items.push_back(
+          buildCxMemberDefaults(CAT->getElementType(), Loc, Path, Dependent));
+      Path.pop_back();
+    }
+    return ActOnInitList(Loc, Items, Loc).get();
+  }
+  return new (Context) ImplicitValueInitExpr(T);
+}
+
 Expr *Sema::buildCxDefaults(RecordDecl *RD, SourceLocation Loc,
                             SmallVectorImpl<CxPathStep> &Path,
                             SmallVectorImpl<CxDependentDefault> &Dependent,
@@ -1328,28 +1348,7 @@ Expr *Sema::buildCxDefaults(RecordDecl *RD, SourceLocation Loc,
     } else if (hasCxFieldDefaults(T)) {
       // A member with defaults of its own starts out holding them, spelled
       // out so the ones that read fields can be applied in order too.
-      const auto *CAT = Context.getAsConstantArrayType(T);
-      if (const RecordDecl *Inner = T->getAsRecordDecl()) {
-        Out.push_back(buildCxDefaults(const_cast<RecordDecl *>(Inner)
-                                          ->getDefinition(),
-                                      Loc, Path, Dependent));
-      } else if (CAT && CAT->getElementType()->getAsRecordDecl()) {
-        SmallVector<Expr *, 8> Items;
-        RecordDecl *Inner =
-            CAT->getElementType()->getAsRecordDecl()->getDefinition();
-        for (uint64_t I = 0, N = CAT->getZExtSize(); I != N; ++I) {
-          Path.push_back({nullptr, I});
-          Items.push_back(buildCxDefaults(Inner, Loc, Path, Dependent));
-          Path.pop_back();
-        }
-        Out.push_back(ActOnInitList(Loc, Items, Loc).get());
-      } else {
-        // Deeper arrays keep the defaults C's list checking fills in.
-        auto *Empty = new (Context)
-            InitListExpr(Context, Loc, {}, Loc, /*isExplicit=*/false);
-        Empty->setType(Context.VoidTy);
-        Out.push_back(Empty);
-      }
+      Out.push_back(buildCxMemberDefaults(T, Loc, Path, Dependent));
     } else {
       // Every initializer writes this field before it can be read; zero
       // keeps the padding and the bytes around it deterministic.

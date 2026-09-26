@@ -4322,6 +4322,11 @@ public:
                         SmallVectorImpl<CxPathStep> &Path,
                         SmallVectorImpl<CxDependentDefault> &Dependent,
                         SmallVectorImpl<Expr *> *Top = nullptr);
+  /// Cx: the defaults of a member of type \p T that has defaults of its
+  /// own: a record's, or those of each element of an array.
+  Expr *buildCxMemberDefaults(QualType T, SourceLocation Loc,
+                              SmallVectorImpl<CxPathStep> &Path,
+                              SmallVectorImpl<CxDependentDefault> &Dependent);
   /// Cx: after \p Object is initialized with every other default, assign
   /// each default of \p Dependent that reads other fields, in order.
   void applyCxDependentDefaults(VarDecl *Object,

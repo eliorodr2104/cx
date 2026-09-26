@@ -65,7 +65,7 @@ int grids(void) {
 }
 
 // A member left to its own defaults applies those that read fields too, and
-// so do array elements; anonymous members are read by name, and a default in
+// so do array elements, in every dimension; anonymous members are read by name, and a default in
 // one reads the enclosing fields.
 typedef struct Pair {
   int first = 3
@@ -75,6 +75,7 @@ typedef struct Pair {
 typedef struct Frame {
   Pair pair
   Pair pairs[2]
+  Pair grid[2][3]
   int area = pair.first * pair.second
   union { int i = 5; float f; }
   int j = i + 1
@@ -84,9 +85,10 @@ typedef struct Frame {
 } Frame
 
 // OPT-LABEL: define {{.*}}frame
-// OPT: ret i32 618077
+// OPT: ret i32 6618077
 int frame(void) {
   Frame f = Frame(7)
-  return f.pairs[1].second * 100000 + f.area * 1000 + f.hi * 10 + f.n
+  return f.grid[1][2].second * 1000000 + f.pairs[1].second * 100000 +
+         f.area * 1000 + f.hi * 10 + f.n
 }
 
