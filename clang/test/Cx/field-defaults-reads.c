@@ -10,6 +10,7 @@
 // RUN: %clang -x cx -target arm64-apple-macosx -Xclang -ast-print -fsyntax-only %s > %t.print.c
 // RUN: %clang -x cx -target arm64-apple-macosx -S -emit-llvm -o - %t.print.c | FileCheck %s
 // RUN: FileCheck --check-prefix=PRINT %s < %t.print.c
+// RUN: %clang -x cx -target arm64-apple-macosx -O1 -S -emit-llvm -o - %s | FileCheck --check-prefix=OPT %s
 // expected-no-diagnostics
 
 #module Reads
@@ -61,5 +62,31 @@ int once(void) {
 int grids(void) {
   Grid g = Grid(1)
   return g.cells
+}
+
+// A member left to its own defaults applies those that read fields too, and
+// so do array elements; anonymous members are read by name, and a default in
+// one reads the enclosing fields.
+typedef struct Pair {
+  int first = 3
+  int second = first * 2
+} Pair
+
+typedef struct Frame {
+  Pair pair
+  Pair pairs[2]
+  int area = pair.first * pair.second
+  union { int i = 5; float f; }
+  int j = i + 1
+  struct { int lo = 1; int hi = lo + j; }
+  int n
+  init(int x) { n = x }
+} Frame
+
+// OPT-LABEL: define {{.*}}frame
+// OPT: ret i32 618077
+int frame(void) {
+  Frame f = Frame(7)
+  return f.pairs[1].second * 100000 + f.area * 1000 + f.hi * 10 + f.n
 }
 

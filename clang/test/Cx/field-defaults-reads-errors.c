@@ -31,3 +31,10 @@ void braces(void) {
   Size s = { 3 } // expected-error {{field 'height' has a default computed from other fields, which a braced list cannot apply; construct the value with 'Size(...)' or give the field}}
   Size t = { 3, 6 }
 }
+
+typedef struct Anon {
+  union { int i; float f; } // expected-note {{give 'i' a default, or compute 'j' in the initializer}}
+  int j = i + 1 // expected-error {{the default of 'j' reads 'i', which the initializer sets only after the defaults are applied}}
+  init(int x) { i = x }
+} Anon
+

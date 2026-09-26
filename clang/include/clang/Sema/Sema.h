@@ -4304,9 +4304,28 @@ public:
   /// \p Read when given.
   bool isCxDependentDefault(const FieldDecl *FD,
                             SmallVectorImpl<const FieldDecl *> *Read = nullptr);
+  /// Cx: one step from a value to a part of it, `.Field` or `[Index]`.
+  struct CxPathStep {
+    FieldDecl *Field;
+    uint64_t Index;
+  };
+  /// Cx: a default that reads other fields, at the path to its field.
+  struct CxDependentDefault {
+    SmallVector<CxPathStep, 2> Path;
+  };
+  /// Cx: whether every value of \p T starts out holding defaults.
+  bool isCxFullyDefaulted(QualType T);
+  /// Cx: the defaults of \p RD as the elements of \p Top, or as a list,
+  /// spelling out nested ones; defaults that read fields are zero here and
+  /// collected in \p Dependent, in declaration order.
+  Expr *buildCxDefaults(RecordDecl *RD, SourceLocation Loc,
+                        SmallVectorImpl<CxPathStep> &Path,
+                        SmallVectorImpl<CxDependentDefault> &Dependent,
+                        SmallVectorImpl<Expr *> *Top = nullptr);
   /// Cx: after \p Object is initialized with every other default, assign
-  /// each default of \p Fields that reads other fields, in order.
-  void applyCxDependentDefaults(VarDecl *Object, ArrayRef<FieldDecl *> Fields,
+  /// each default of \p Dependent that reads other fields, in order.
+  void applyCxDependentDefaults(VarDecl *Object,
+                                ArrayRef<CxDependentDefault> Dependent,
                                 SmallVectorImpl<Stmt *> &Body);
   /// Cx: a store into a field of the object a construction is building, which
   /// holds no value yet.

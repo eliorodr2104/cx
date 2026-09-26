@@ -905,15 +905,29 @@ RecordDecl *Sema::getCxReceiverRecord(ParmVarDecl **Self) {
   return RT->getDecl();
 }
 
+/// The record whose fields a default in \p RD may name: \p RD itself, and
+/// the records it is an anonymous member of.
+static SmallVector<RecordDecl *, 2> getCxDefaultScopes(RecordDecl *RD) {
+  // While its body is parsed, an anonymous member is not yet known as one,
+  // so any unnamed record inside another sees the enclosing fields.
+  SmallVector<RecordDecl *, 2> Scopes{RD};
+  while (!RD->getIdentifier() && !RD->getTypedefNameForAnonDecl() &&
+         (RD = dyn_cast<RecordDecl>(RD->getDeclContext())))
+    Scopes.push_back(RD);
+  return Scopes;
+}
+
 bool Sema::isCxImplicitSelfMember(const DeclarationNameInfo &NameInfo) {
   if (!getLangOpts().CX)
     return false;
   // In a field default, the earlier fields are named like members.
-  if (CxDefaultedField)
-    return llvm::any_of(CxDefaultedField->getParent()->fields(),
-                        [&](const FieldDecl *FD) {
-                          return FD->getDeclName() == NameInfo.getName();
-                        });
+  if (CxDefaultedField) {
+    for (RecordDecl *RD : getCxDefaultScopes(CxDefaultedField->getParent()))
+      for (NamedDecl *D : RD->lookup(NameInfo.getName()))
+        if (isa<FieldDecl, IndirectFieldDecl>(D))
+          return true;
+    return false;
+  }
   RecordDecl *RD = getCxReceiverRecord();
   if (!RD)
     return false;
@@ -1149,32 +1163,39 @@ bool Sema::CheckCxWriteAccessChain(const Expr *E) {
 //===----------------------------------------------------------------------===//
 
 ExprResult Sema::BuildCxDefaultFieldRef(const DeclarationNameInfo &NameInfo) {
-  const IdentifierInfo *II = NameInfo.getName().getAsIdentifierInfo();
-  if (!CxDefaultedField || !II)
+  if (!CxDefaultedField || !NameInfo.getName().isIdentifier())
     return ExprEmpty();
   // Only the fields declared so far are in the record, so a later field is
-  // not found and stays undeclared.
-  for (FieldDecl *FD : CxDefaultedField->getParent()->fields()) {
-    if (FD->getIdentifier() != II)
-      continue;
-    if (FD == CxDefaultedField) {
-      Diag(NameInfo.getLoc(), diag::err_cx_default_reads_itself) << FD;
-      return ExprError();
+  // not found and stays undeclared. A member of an anonymous struct or union
+  // is found through it, and a default in one sees the enclosing fields.
+  for (RecordDecl *RD : getCxDefaultScopes(CxDefaultedField->getParent()))
+    for (NamedDecl *D : RD->lookup(NameInfo.getName())) {
+      auto *VD = dyn_cast<ValueDecl>(D);
+      if (!VD || !isa<FieldDecl, IndirectFieldDecl>(VD))
+        continue;
+      if (VD == CxDefaultedField) {
+        Diag(NameInfo.getLoc(), diag::err_cx_default_reads_itself) << VD;
+        return ExprError();
+      }
+      // A placeholder for the field of the value being constructed; every
+      // construction rebuilds the default over its own object.
+      return BuildDeclRefExpr(VD, VD->getType(), VK_LValue, NameInfo);
     }
-    // A placeholder for the field of the value being constructed; every
-    // construction rebuilds the default over its own object.
-    return BuildDeclRefExpr(FD, FD->getType(), VK_LValue, NameInfo);
-  }
   return ExprEmpty();
 }
 
+/// The fields a default reads: for a member of an anonymous struct or union,
+/// the member itself.
 static void collectCxFieldReads(const Stmt *S,
                                 SmallVectorImpl<const FieldDecl *> &Read) {
   if (!S)
     return;
-  if (const auto *DRE = dyn_cast<DeclRefExpr>(S))
+  if (const auto *DRE = dyn_cast<DeclRefExpr>(S)) {
     if (const auto *FD = dyn_cast<FieldDecl>(DRE->getDecl()))
       Read.push_back(FD);
+    else if (const auto *IFD = dyn_cast<IndirectFieldDecl>(DRE->getDecl()))
+      Read.push_back(IFD->getAnonField());
+  }
   for (const Stmt *Child : S->children())
     collectCxFieldReads(Child, Read);
 }
@@ -1190,45 +1211,171 @@ bool Sema::isCxDependentDefault(const FieldDecl *FD,
 }
 
 namespace {
-/// Rebuilds a default over the object a construction is building: each field
-/// it reads becomes that object's field.
-class CxDefaultRebuilder : public TreeTransform<CxDefaultRebuilder> {
+/// A place inside the object a construction builds: `.field` and `[index]`
+/// steps from the object.
+struct CxPlace {
   VarDecl *Object;
+  ArrayRef<Sema::CxPathStep> Steps;
+
+  /// The object, then each step, as a fresh lvalue.
+  ExprResult build(Sema &S, SourceLocation Loc, unsigned Count) const {
+    ExprResult E =
+        S.BuildDeclRefExpr(Object, Object->getType(), VK_LValue, Loc);
+    for (unsigned I = 0; I != Count && E.isUsable(); ++I) {
+      if (FieldDecl *FD = Steps[I].Field) {
+        E = MemberExpr::CreateImplicit(
+            S.Context, E.get(), /*IsArrow=*/false, FD, FD->getType(),
+            VK_LValue, FD->isBitField() ? OK_BitField : OK_Ordinary);
+        continue;
+      }
+      Expr *Index = IntegerLiteral::Create(
+          S.Context, llvm::APInt(64, Steps[I].Index), S.Context.getSizeType(),
+          Loc);
+      E = S.CreateBuiltinArraySubscriptExpr(E.get(), Loc, Index, Loc);
+    }
+    return E;
+  }
+
+  /// The record each prefix of the steps reaches, from the object's.
+  const RecordDecl *recordAt(unsigned Count) const {
+    QualType T = Object->getType();
+    for (unsigned I = 0; I != Count; ++I)
+      T = Steps[I].Field ? Steps[I].Field->getType()
+                         : QualType(T->getArrayElementTypeNoTypeQual(), 0);
+    return T->getAsRecordDecl();
+  }
+};
+
+/// Rebuilds a default over the object a construction is building: each field
+/// it reads is that object's, at the place the default's own field is.
+class CxDefaultRebuilder : public TreeTransform<CxDefaultRebuilder> {
+  CxPlace Place;
 
 public:
-  CxDefaultRebuilder(Sema &S, VarDecl *Object)
-      : TreeTransform(S), Object(Object) {}
+  CxDefaultRebuilder(Sema &S, CxPlace Place) : TreeTransform(S), Place(Place) {}
   bool AlwaysRebuild() { return true; }
+
+  /// The value holding \p FD: the deepest place on the path whose record is
+  /// \p FD's, which is the default's own record or one it is anonymous in.
+  ExprResult baseFor(const FieldDecl *FD, SourceLocation Loc) {
+    unsigned Count = Place.Steps.size() - 1;
+    while (Count && Place.recordAt(Count) != FD->getParent())
+      --Count;
+    return Place.build(SemaRef, Loc, Count);
+  }
+
   ExprResult TransformDeclRefExpr(DeclRefExpr *E) {
-    auto *FD = dyn_cast<FieldDecl>(E->getDecl());
-    if (!FD)
+    ArrayRef<NamedDecl *> Chain;
+    NamedDecl *Direct[] = {E->getDecl()};
+    if (auto *IFD = dyn_cast<IndirectFieldDecl>(E->getDecl()))
+      Chain = IFD->chain();
+    else if (isa<FieldDecl>(E->getDecl()))
+      Chain = Direct;
+    else
       return TreeTransform::TransformDeclRefExpr(E);
-    ExprResult Base = SemaRef.BuildDeclRefExpr(Object, Object->getType(),
-                                               VK_LValue, E->getLocation());
-    if (Base.isInvalid())
-      return ExprError();
-    return MemberExpr::CreateImplicit(
-        SemaRef.Context, Base.get(), /*IsArrow=*/false, FD, FD->getType(),
-        VK_LValue, FD->isBitField() ? OK_BitField : OK_Ordinary);
+    ExprResult Base = baseFor(cast<FieldDecl>(Chain.front()), E->getLocation());
+    for (NamedDecl *D : Chain) {
+      if (Base.isInvalid())
+        return ExprError();
+      auto *FD = cast<FieldDecl>(D);
+      Base = MemberExpr::CreateImplicit(
+          SemaRef.Context, Base.get(), /*IsArrow=*/false, FD, FD->getType(),
+          VK_LValue, FD->isBitField() ? OK_BitField : OK_Ordinary);
+    }
+    return Base;
   }
 };
 } // namespace
 
-void Sema::applyCxDependentDefaults(VarDecl *Object,
-                                    ArrayRef<FieldDecl *> Fields,
-                                    SmallVectorImpl<Stmt *> &Body) {
-  for (FieldDecl *FD : Fields) {
-    SourceLocation Loc = Object->getLocation();
-    ExprResult Value = CxDefaultRebuilder(*this, Object).TransformExpr(
-        FD->getInClassInitializer());
-    ExprResult Base = BuildDeclRefExpr(Object, Object->getType(), VK_LValue,
-                                       Loc);
-    if (Value.isInvalid() || Base.isInvalid())
+bool Sema::isCxFullyDefaulted(QualType T) {
+  const RecordDecl *RD = Context.getBaseElementType(T)->getAsRecordDecl();
+  if (!RD || !(RD = RD->getDefinition()) || RD->field_empty())
+    return false;
+  // A C record cannot contain itself by value, so this terminates.
+  auto Defaulted = [&](const FieldDecl *FD) {
+    return FD->isUnnamedBitField() || FD->hasInClassInitializer() ||
+           isCxFullyDefaulted(FD->getType());
+  };
+  return RD->isUnion() ? llvm::any_of(RD->fields(), Defaulted)
+                       : llvm::all_of(RD->fields(), Defaulted);
+}
+
+Expr *Sema::buildCxDefaults(RecordDecl *RD, SourceLocation Loc,
+                            SmallVectorImpl<CxPathStep> &Path,
+                            SmallVectorImpl<CxDependentDefault> &Dependent,
+                            SmallVectorImpl<Expr *> *Top) {
+  SmallVector<Expr *, 8> Elems;
+  SmallVectorImpl<Expr *> &Out = Top ? *Top : Elems;
+  // A union list initializes its first member; any other defaulted member is
+  // left to the defaults C's list checking fills in.
+  if (RD->isUnion()) {
+    auto *Empty = new (Context)
+        InitListExpr(Context, Loc, {}, Loc, /*isExplicit=*/false);
+    Empty->setType(Context.VoidTy);
+    return Empty;
+  }
+  for (FieldDecl *FD : RD->fields()) {
+    if (FD->getType()->isIncompleteArrayType() || FD->isUnnamedBitField())
       continue;
-    Expr *Target = MemberExpr::CreateImplicit(
-        Context, Base.get(), /*IsArrow=*/false, FD, FD->getType(), VK_LValue,
-        FD->isBitField() ? OK_BitField : OK_Ordinary);
-    ExprResult Store = CreateBuiltinBinOp(Loc, BO_Assign, Target, Value.get());
+    Path.push_back({FD, 0});
+    QualType T = FD->getType();
+    if (isCxDependentDefault(FD)) {
+      // Applied once the fields it reads hold their values.
+      Dependent.push_back({SmallVector<CxPathStep, 2>(Path.begin(), Path.end())});
+      Out.push_back(new (Context) ImplicitValueInitExpr(T));
+    } else if (Expr *Default = FD->getInClassInitializer()) {
+      Out.push_back(Default);
+    } else if (hasCxFieldDefaults(T)) {
+      // A member with defaults of its own starts out holding them, spelled
+      // out so the ones that read fields can be applied in order too.
+      const auto *CAT = Context.getAsConstantArrayType(T);
+      if (const RecordDecl *Inner = T->getAsRecordDecl()) {
+        Out.push_back(buildCxDefaults(const_cast<RecordDecl *>(Inner)
+                                          ->getDefinition(),
+                                      Loc, Path, Dependent));
+      } else if (CAT && CAT->getElementType()->getAsRecordDecl()) {
+        SmallVector<Expr *, 8> Items;
+        RecordDecl *Inner =
+            CAT->getElementType()->getAsRecordDecl()->getDefinition();
+        for (uint64_t I = 0, N = CAT->getZExtSize(); I != N; ++I) {
+          Path.push_back({nullptr, I});
+          Items.push_back(buildCxDefaults(Inner, Loc, Path, Dependent));
+          Path.pop_back();
+        }
+        Out.push_back(ActOnInitList(Loc, Items, Loc).get());
+      } else {
+        // Deeper arrays keep the defaults C's list checking fills in.
+        auto *Empty = new (Context)
+            InitListExpr(Context, Loc, {}, Loc, /*isExplicit=*/false);
+        Empty->setType(Context.VoidTy);
+        Out.push_back(Empty);
+      }
+    } else {
+      // Every initializer writes this field before it can be read; zero
+      // keeps the padding and the bytes around it deterministic.
+      Out.push_back(new (Context) ImplicitValueInitExpr(T));
+    }
+    Path.pop_back();
+  }
+  if (Top)
+    return nullptr;
+  return ActOnInitList(Loc, Elems, Loc).get();
+}
+
+void Sema::applyCxDependentDefaults(VarDecl *Object,
+                                    ArrayRef<CxDependentDefault> Dependent,
+                                    SmallVectorImpl<Stmt *> &Body) {
+  SourceLocation Loc = Object->getLocation();
+  for (const CxDependentDefault &D : Dependent) {
+    CxPlace Place{Object, D.Path};
+    FieldDecl *FD = D.Path.back().Field;
+    ExprResult Value = CxDefaultRebuilder(*this, Place).TransformExpr(
+        FD->getInClassInitializer());
+    ExprResult Target = Place.build(*this, Loc, D.Path.size());
+    if (Value.isInvalid() || Target.isInvalid())
+      continue;
+    ExprResult Store =
+        CreateBuiltinBinOp(Loc, BO_Assign, Target.get(), Value.get());
     if (Store.isUsable())
       Body.push_back(Store.get());
   }
@@ -1458,29 +1605,9 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
   Object->setImplicit();
 
   SmallVector<Expr *, 8> Defaults;
-  SmallVector<FieldDecl *, 4> Dependent;
-  for (FieldDecl *FD : RD->fields()) {
-    if (FD->getType()->isIncompleteArrayType() || FD->isUnnamedBitField())
-      continue;
-    // A default that reads other fields is applied once they hold theirs.
-    if (isCxDependentDefault(FD)) {
-      Dependent.push_back(FD);
-      Defaults.push_back(new (Context) ImplicitValueInitExpr(FD->getType()));
-    } else if (Expr *Default = FD->getInClassInitializer())
-      Defaults.push_back(Default);
-    else if (hasCxFieldDefaults(FD->getType())) {
-      // A member with defaults of its own starts out holding them. The list
-      // is typed by the initialization, as the parser's lists are.
-      auto *Empty = new (Context)
-          InitListExpr(Context, TypeLoc, {}, TypeLoc, /*isExplicit=*/false);
-      Empty->setType(Context.VoidTy);
-      Defaults.push_back(Empty);
-    }
-    else
-      // Every initializer writes this field before it can be read; zero
-      // keeps the padding and the bytes around it deterministic.
-      Defaults.push_back(new (Context) ImplicitValueInitExpr(FD->getType()));
-  }
+  SmallVector<CxDependentDefault, 4> Dependent;
+  SmallVector<CxPathStep, 4> Path;
+  buildCxDefaults(RD, LParenLoc, Path, Dependent, &Defaults);
   if (!Defaults.empty()) {
     // Access was not checked here: none of these values is written by the
     // call, they are the type's own defaults.
@@ -1581,8 +1708,19 @@ void Sema::completeCxRecordValueOperations(RecordDecl *RD) {
     return;
   // A default that reads a field needs that field's value first: its own
   // default, or, with no custom initializer, the value construction is given.
+  // An anonymous struct or union is checked with the record it is part of.
   bool CustomInit = hasCxInitializer(RD);
-  for (FieldDecl *FD : RD->fields()) {
+  SmallVector<FieldDecl *, 8> Fields;
+  SmallVector<RecordDecl *, 2> Records;
+  if (!RD->isAnonymousStructOrUnion())
+    Records.push_back(RD);
+  while (!Records.empty())
+    for (FieldDecl *FD : Records.pop_back_val()->fields()) {
+      Fields.push_back(FD);
+      if (FD->isAnonymousStructOrUnion())
+        Records.push_back(FD->getType()->getAsRecordDecl());
+    }
+  for (FieldDecl *FD : Fields) {
     SmallVector<const FieldDecl *, 4> Read;
     if (!isCxDependentDefault(FD, &Read))
       continue;
@@ -1593,7 +1731,7 @@ void Sema::completeCxRecordValueOperations(RecordDecl *RD) {
     if (!CustomInit)
       continue;
     for (const FieldDecl *R : Read)
-      if (!R->hasInClassInitializer()) {
+      if (!R->hasInClassInitializer() && !isCxFullyDefaulted(R->getType())) {
         Diag(FD->getInClassInitializer()->getExprLoc(),
              diag::err_cx_default_reads_initialized)
             << FD << R;
@@ -1826,14 +1964,14 @@ ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
   // default has to be given.
   bool Invalid = false;
   SmallVector<Expr *, 8> FieldInits;
-  SmallVector<FieldDecl *, 4> Dependent;
+  SmallVector<CxDependentDefault, 4> Dependent;
   unsigned Next = 0;
   for (FieldDecl *FD : Fields) {
     bool Supplied = Next < Args.size() && Labels[Next] == FD->getIdentifier();
     if (!Supplied) {
       // A default that reads other fields is applied once they hold theirs.
       if (isCxDependentDefault(FD)) {
-        Dependent.push_back(FD);
+        Dependent.push_back({{CxPathStep{FD, 0}}});
         FieldInits.push_back(new (Context) ImplicitValueInitExpr(FD->getType()));
         continue;
       }
