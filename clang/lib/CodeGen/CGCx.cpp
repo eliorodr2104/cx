@@ -95,6 +95,13 @@ bool CodeGenFunction::isCxRawResourceStore(const Expr *LHS) const {
       if (const auto *VD = dyn_cast<VarDecl>(DRE->getDecl());
           VD && VD->isImplicit() && VD->getName() == "__cx_place")
         return true;
+  // A construction's own object holds no value in a field it assigns.
+  if (const auto *ME = dyn_cast<MemberExpr>(LHS))
+    if (const auto *DRE =
+            dyn_cast<DeclRefExpr>(ME->getBase()->IgnoreParenImpCasts()))
+      if (const auto *VD = dyn_cast<VarDecl>(DRE->getDecl());
+          VD && VD->isImplicit() && VD->getName() == "__cx_object")
+        return true;
   // An initializer's assignment to a field of `self` is its initialization;
   // definite initialization makes it the only one on its path.
   const auto *FD = dyn_cast_or_null<FunctionDecl>(CurCodeDecl);

@@ -22,6 +22,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Sema.h"
+#include "TreeTransform.h"
 #include "TypeLocBuilder.h"
 #include "clang/AST/ASTConsumer.h"
 
@@ -907,6 +908,12 @@ RecordDecl *Sema::getCxReceiverRecord(ParmVarDecl **Self) {
 bool Sema::isCxImplicitSelfMember(const DeclarationNameInfo &NameInfo) {
   if (!getLangOpts().CX)
     return false;
+  // In a field default, the earlier fields are named like members.
+  if (CxDefaultedField)
+    return llvm::any_of(CxDefaultedField->getParent()->fields(),
+                        [&](const FieldDecl *FD) {
+                          return FD->getDeclName() == NameInfo.getName();
+                        });
   RecordDecl *RD = getCxReceiverRecord();
   if (!RD)
     return false;
@@ -1137,6 +1144,105 @@ bool Sema::CheckCxWriteAccessChain(const Expr *E) {
   }
 }
 
+//===----------------------------------------------------------------------===//
+// Defaults that read other fields
+//===----------------------------------------------------------------------===//
+
+ExprResult Sema::BuildCxDefaultFieldRef(const DeclarationNameInfo &NameInfo) {
+  const IdentifierInfo *II = NameInfo.getName().getAsIdentifierInfo();
+  if (!CxDefaultedField || !II)
+    return ExprEmpty();
+  // Only the fields declared so far are in the record, so a later field is
+  // not found and stays undeclared.
+  for (FieldDecl *FD : CxDefaultedField->getParent()->fields()) {
+    if (FD->getIdentifier() != II)
+      continue;
+    if (FD == CxDefaultedField) {
+      Diag(NameInfo.getLoc(), diag::err_cx_default_reads_itself) << FD;
+      return ExprError();
+    }
+    // A placeholder for the field of the value being constructed; every
+    // construction rebuilds the default over its own object.
+    return BuildDeclRefExpr(FD, FD->getType(), VK_LValue, NameInfo);
+  }
+  return ExprEmpty();
+}
+
+static void collectCxFieldReads(const Stmt *S,
+                                SmallVectorImpl<const FieldDecl *> &Read) {
+  if (!S)
+    return;
+  if (const auto *DRE = dyn_cast<DeclRefExpr>(S))
+    if (const auto *FD = dyn_cast<FieldDecl>(DRE->getDecl()))
+      Read.push_back(FD);
+  for (const Stmt *Child : S->children())
+    collectCxFieldReads(Child, Read);
+}
+
+bool Sema::isCxDependentDefault(const FieldDecl *FD,
+                                SmallVectorImpl<const FieldDecl *> *Read) {
+  if (!getLangOpts().CX || !FD->hasInClassInitializer())
+    return false;
+  SmallVector<const FieldDecl *, 4> Local;
+  SmallVectorImpl<const FieldDecl *> &Out = Read ? *Read : Local;
+  collectCxFieldReads(FD->getInClassInitializer(), Out);
+  return !Out.empty();
+}
+
+namespace {
+/// Rebuilds a default over the object a construction is building: each field
+/// it reads becomes that object's field.
+class CxDefaultRebuilder : public TreeTransform<CxDefaultRebuilder> {
+  VarDecl *Object;
+
+public:
+  CxDefaultRebuilder(Sema &S, VarDecl *Object)
+      : TreeTransform(S), Object(Object) {}
+  bool AlwaysRebuild() { return true; }
+  ExprResult TransformDeclRefExpr(DeclRefExpr *E) {
+    auto *FD = dyn_cast<FieldDecl>(E->getDecl());
+    if (!FD)
+      return TreeTransform::TransformDeclRefExpr(E);
+    ExprResult Base = SemaRef.BuildDeclRefExpr(Object, Object->getType(),
+                                               VK_LValue, E->getLocation());
+    if (Base.isInvalid())
+      return ExprError();
+    return MemberExpr::CreateImplicit(
+        SemaRef.Context, Base.get(), /*IsArrow=*/false, FD, FD->getType(),
+        VK_LValue, FD->isBitField() ? OK_BitField : OK_Ordinary);
+  }
+};
+} // namespace
+
+void Sema::applyCxDependentDefaults(VarDecl *Object,
+                                    ArrayRef<FieldDecl *> Fields,
+                                    SmallVectorImpl<Stmt *> &Body) {
+  for (FieldDecl *FD : Fields) {
+    SourceLocation Loc = Object->getLocation();
+    ExprResult Value = CxDefaultRebuilder(*this, Object).TransformExpr(
+        FD->getInClassInitializer());
+    ExprResult Base = BuildDeclRefExpr(Object, Object->getType(), VK_LValue,
+                                       Loc);
+    if (Value.isInvalid() || Base.isInvalid())
+      continue;
+    Expr *Target = MemberExpr::CreateImplicit(
+        Context, Base.get(), /*IsArrow=*/false, FD, FD->getType(), VK_LValue,
+        FD->isBitField() ? OK_BitField : OK_Ordinary);
+    ExprResult Store = CreateBuiltinBinOp(Loc, BO_Assign, Target, Value.get());
+    if (Store.isUsable())
+      Body.push_back(Store.get());
+  }
+}
+
+bool Sema::isCxConstructionStore(const Expr *E) const {
+  const auto *ME = dyn_cast<MemberExpr>(E->IgnoreParens());
+  const auto *DRE =
+      ME ? dyn_cast<DeclRefExpr>(ME->getBase()->IgnoreParenImpCasts())
+         : nullptr;
+  const auto *VD = DRE ? dyn_cast<VarDecl>(DRE->getDecl()) : nullptr;
+  return VD && VD->isImplicit() && VD->getName() == "__cx_object";
+}
+
 bool Sema::hasCxFieldDefaults(QualType T) {
   if (!getLangOpts().CX || T.isNull())
     return false;
@@ -1343,10 +1449,15 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
   Object->setImplicit();
 
   SmallVector<Expr *, 8> Defaults;
+  SmallVector<FieldDecl *, 4> Dependent;
   for (FieldDecl *FD : RD->fields()) {
     if (FD->getType()->isIncompleteArrayType() || FD->isUnnamedBitField())
       continue;
-    if (Expr *Default = FD->getInClassInitializer())
+    // A default that reads other fields is applied once they hold theirs.
+    if (isCxDependentDefault(FD)) {
+      Dependent.push_back(FD);
+      Defaults.push_back(new (Context) ImplicitValueInitExpr(FD->getType()));
+    } else if (Expr *Default = FD->getInClassInitializer())
       Defaults.push_back(Default);
     else if (hasCxFieldDefaults(FD->getType())) {
       // A member with defaults of its own starts out holding them. The list
@@ -1407,12 +1518,16 @@ ExprResult Sema::BuildCxInitConstruction(QualType T, RecordDecl *RD,
   if (Value.isInvalid())
     return ExprError();
 
-  // Declare the object, run the initializer over it, produce it. A statement
-  // expression is what C already has for "these statements, then this value",
-  // so no new AST node and no new lowering are needed.
-  Stmt *Body[] = {new (Context) DeclStmt(DeclGroupRef(Object), TypeLoc,
-                                         RParenLoc),
-                  Call.get(), Value.get()};
+  // Declare the object, apply the defaults that read fields, run the
+  // initializer over it, produce it. A statement expression is what C already
+  // has for "these statements, then this value", so no new AST node and no new
+  // lowering are needed.
+  SmallVector<Stmt *, 8> Body;
+  Body.push_back(new (Context) DeclStmt(DeclGroupRef(Object), TypeLoc,
+                                        RParenLoc));
+  applyCxDependentDefaults(Object, Dependent, Body);
+  Body.push_back(Call.get());
+  Body.push_back(Value.get());
   ActOnStartStmtExpr();
   return BuildStmtExpr(LParenLoc,
                        CompoundStmt::Create(Context, Body, FPOptionsOverride(),
@@ -1455,6 +1570,28 @@ bool Sema::CheckCxResourceStorage(QualType T, SourceLocation Loc,
 void Sema::completeCxRecordValueOperations(RecordDecl *RD) {
   if (!getLangOpts().CX || RD->isInvalidDecl())
     return;
+  // A default that reads a field needs that field's value first: its own
+  // default, or, with no custom initializer, the value construction is given.
+  bool CustomInit = hasCxInitializer(RD);
+  for (FieldDecl *FD : RD->fields()) {
+    SmallVector<const FieldDecl *, 4> Read;
+    if (!isCxDependentDefault(FD, &Read))
+      continue;
+    if (FD->getType()->isArrayType()) {
+      Diag(FD->getLocation(), diag::err_cx_default_reads_array) << FD;
+      continue;
+    }
+    if (!CustomInit)
+      continue;
+    for (const FieldDecl *R : Read)
+      if (!R->hasInClassInitializer()) {
+        Diag(FD->getInClassInitializer()->getExprLoc(),
+             diag::err_cx_default_reads_initialized)
+            << FD << R;
+        Diag(R->getLocation(), diag::note_cx_default_read_field) << R << FD;
+        break;
+      }
+  }
   bool ResourceField = false;
   for (FieldDecl *FD : RD->fields()) {
     if (!isCxResourceType(FD->getType()))
@@ -1680,10 +1817,17 @@ ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
   // default has to be given.
   bool Invalid = false;
   SmallVector<Expr *, 8> FieldInits;
+  SmallVector<FieldDecl *, 4> Dependent;
   unsigned Next = 0;
   for (FieldDecl *FD : Fields) {
     bool Supplied = Next < Args.size() && Labels[Next] == FD->getIdentifier();
     if (!Supplied) {
+      // A default that reads other fields is applied once they hold theirs.
+      if (isCxDependentDefault(FD)) {
+        Dependent.push_back(FD);
+        FieldInits.push_back(new (Context) ImplicitValueInitExpr(FD->getType()));
+        continue;
+      }
       if (Expr *Default = FD->getInClassInitializer()) {
         // A defaulted field is not part of the construction surface, so its
         // access does not bound where the type can be constructed.
@@ -1729,7 +1873,37 @@ ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
   Expr *Init = ActOnInitList(LParenLoc, FieldInits, RParenLoc).getAs<Expr>();
   if (!Init)
     return ExprError();
-  return BuildCompoundLiteralExpr(LParenLoc, TInfo, RParenLoc, Init);
+  if (Dependent.empty())
+    return BuildCompoundLiteralExpr(LParenLoc, TInfo, RParenLoc, Init);
+
+  // Defaults that read fields are statements after the others, so the value
+  // is built as a custom initializer's is.
+  if (!CurContext->isFunctionOrMethod() || !getCurFunction()) {
+    Diag(TypeLoc, diag::err_cx_default_reads_at_file_scope) << T;
+    return ExprError();
+  }
+  VarDecl *Object = VarDecl::Create(
+      Context, CurContext, TypeLoc, TypeLoc, &Context.Idents.get("__cx_object"),
+      T, Context.getTrivialTypeSourceInfo(T, TypeLoc), SC_None);
+  Object->setImplicit();
+  AddInitializerToDecl(Object, Init, /*DirectInit=*/false);
+  if (Object->isInvalidDecl())
+    return ExprError();
+  SmallVector<Stmt *, 8> Body;
+  Body.push_back(new (Context) DeclStmt(DeclGroupRef(Object), TypeLoc,
+                                        RParenLoc));
+  applyCxDependentDefaults(Object, Dependent, Body);
+  llvm::SaveAndRestore<bool> Moving(CxMovingValue, true);
+  ExprResult Value = ActOnStmtExprResult(
+      BuildDeclRefExpr(Object, T, VK_LValue, RParenLoc));
+  if (Value.isInvalid())
+    return ExprError();
+  Body.push_back(Value.get());
+  ActOnStartStmtExpr();
+  return BuildStmtExpr(LParenLoc,
+                       CompoundStmt::Create(Context, Body, FPOptionsOverride(),
+                                            LParenLoc, RParenLoc),
+                       RParenLoc, /*TemplateDepth=*/0);
 }
 
 //===----------------------------------------------------------------------===//

@@ -109,8 +109,8 @@ failed, 0 unexpected failures.
   the generated surface.
 - ~~**Only an expression as a default.**~~ [M7b](M7b.md) adds braced defaults,
   `int counts[4] = {}`.
-- **A default cannot mention another field.** It is an ordinary expression
-  evaluated with no receiver, so `int b = a + 1;` does not work.
+- ~~**A default cannot mention another field.**~~ Supplied by
+  [M7.1](M7.1.md): it may read an earlier field that holds a value.
 - **Defaults are not used for an uninitialized declaration.** `Guarded g;`
   still leaves C's indeterminate storage, as `structs.md` requires.
 - **No ordering guarantee beyond declaration order**, which is all the

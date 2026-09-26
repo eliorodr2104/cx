@@ -2724,6 +2724,21 @@ def err_cx_construction_missing_field : Error<
   "missing value for field %0 in construction of %1; it has no default">;
 def err_cx_field_default_not_field : Error<
   "only a stored field can have a default value">;
+def err_cx_default_reads_itself : Error<
+  "the default of %0 reads %0 itself">;
+def err_cx_default_reads_initialized : Error<
+  "the default of %0 reads %1, which the initializer sets only after the "
+  "defaults are applied">;
+def note_cx_default_read_field : Note<
+  "give %0 a default, or compute %1 in the initializer">;
+def err_cx_default_reads_array : Error<
+  "the default of array field %0 cannot read other fields">;
+def err_cx_default_reads_in_braces : Error<
+  "field %0 has a default computed from other fields, which a braced list "
+  "cannot apply; construct the value with '%1(...)' or give the field">;
+def err_cx_default_reads_at_file_scope : Error<
+  "construction of %0 computes a default from another field, so it cannot "
+  "appear outside a function">;
 def err_cx_field_default_local : Error<
   "a field default cannot refer to %0, a local variable of the enclosing "
   "function">;

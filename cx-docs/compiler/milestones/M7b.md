@@ -123,7 +123,8 @@ Every C/GNU standard, as in M0.
   registered, which is stricter than where it runs.
 - **Block literals and nested functions** inside an initializer are not
   analysed.
-- **A default reading another field** is still open (M7.1).
+- ~~**A default reading another field** is still open (M7.1).~~ Supplied by
+  [M7.1](M7.1.md).
 
 ## Runnable demonstration
 

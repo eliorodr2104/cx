@@ -2959,6 +2959,12 @@ ExprResult Sema::ActOnIdExpression(Scope *S, CXXScopeSpec &SS,
       getLangOpts().CX && II->isStr("null"))
     return ActOnCXXNullPtrLiteral(NameLoc);
 
+  // Cx: in a field default, an earlier field is named directly.
+  if (getLangOpts().CX && CxDefaultedField && SS.isEmpty() && II)
+    if (ExprResult F = BuildCxDefaultFieldRef(NameInfo);
+        F.isUsable() || F.isInvalid())
+      return F;
+
   // Cx: inside a method body an unqualified name may be a field or another
   // method of the receiver. Only a parameter or binding of the method itself
   // shadows it; a file-scope declaration, or a local of a function enclosing a
@@ -14439,7 +14445,8 @@ static bool CheckForModifiableLvalue(Expr *E, SourceLocation Loc, Sema &S) {
 
   // Cx: an initializer's assignment to a const field of `self` is that
   // field's initialization; definite initialization rejects a second one.
-  if (IsLV == Expr::MLV_ConstQualified && S.isCxInitConstFieldWrite(E))
+  if (IsLV == Expr::MLV_ConstQualified &&
+      (S.isCxInitConstFieldWrite(E) || S.isCxConstructionStore(E)))
     return false;
 
   // Cx: the receiver of a `~mutating` method is const because of the promise

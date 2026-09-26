@@ -2206,16 +2206,25 @@ void StmtPrinter::VisitAddrLabelExpr(AddrLabelExpr *Node) {
 
 /// Cx: the initializer call of a construction `T(...)`, which is lowered to
 /// `({ T __cx_object = defaults; init(&__cx_object, ...); __cx_object; })`.
-static const CallExpr *getCxConstructionCall(const StmtExpr *E) {
+/// Cx: the object a construction declares first, `T __cx_object = ...`.
+static const VarDecl *getCxConstructionObject(const StmtExpr *E) {
   const CompoundStmt *CS = E->getSubStmt();
-  if (CS->size() != 3)
+  if (CS->size() < 2)
     return nullptr;
   const auto *DS = dyn_cast<DeclStmt>(CS->body_front());
   const auto *VD =
       DS && DS->isSingleDecl() ? dyn_cast<VarDecl>(DS->getSingleDecl()) : nullptr;
-  if (!VD || !VD->isImplicit() || VD->getName() != "__cx_object")
+  return VD && VD->isImplicit() && VD->getName() == "__cx_object" ? VD
+                                                                   : nullptr;
+}
+
+static const CallExpr *getCxConstructionCall(const StmtExpr *E) {
+  // Defaults that read fields are assigned between the declaration and the
+  // initializer call.
+  const CompoundStmt *CS = E->getSubStmt();
+  if (CS->size() < 3 || !getCxConstructionObject(E))
     return nullptr;
-  const auto *Call = dyn_cast<CallExpr>(CS->body_begin()[1]);
+  const auto *Call = dyn_cast<CallExpr>(CS->body_begin()[CS->size() - 2]);
   const FunctionDecl *FD = Call ? Call->getDirectCallee() : nullptr;
   if (!FD || !FD->hasAttr<CxMethodAttr>() || !FD->getDeclName().isIdentifier() ||
       FD->getName() != "init")
@@ -2283,6 +2292,38 @@ void StmtPrinter::VisitStmtExpr(StmtExpr *E) {
         ->printPretty(VOS, Helper, Policy, 0, NL, Context);
     OS << "->init" << StringRef(Value).drop_until([](char C) { return C == '('; });
     return;
+  }
+  // A generated construction whose defaults read fields: its list holds the
+  // values given, and the fields assigned after it take their defaults again.
+  if (const VarDecl *Object = getCxConstructionObject(E);
+      Object && !getCxConstructionCall(E)) {
+    const auto *List = dyn_cast_or_null<InitListExpr>(Object->getInit());
+    const RecordDecl *RD = Object->getType()->getAsRecordDecl();
+    if (List && RD) {
+      llvm::SmallPtrSet<const ValueDecl *, 4> Assigned;
+      for (const Stmt *S : E->getSubStmt()->body())
+        if (const auto *BO = dyn_cast<BinaryOperator>(S))
+          if (const auto *ME = dyn_cast<MemberExpr>(BO->getLHS()))
+            Assigned.insert(ME->getMemberDecl());
+      Object->getType().getUnqualifiedType().print(OS, Policy);
+      OS << "(";
+      unsigned I = 0;
+      bool First = true;
+      for (const FieldDecl *FD : RD->fields()) {
+        if (FD->isUnnamedBitField() || FD->getType()->isIncompleteArrayType())
+          continue;
+        if (I == List->getNumInits())
+          break;
+        const Expr *Value = List->getInit(I++);
+        if (Assigned.count(FD))
+          continue;
+        OS << (First ? "" : ", ") << FD->getName() << ": ";
+        First = false;
+        PrintExpr(const_cast<Expr *>(Value));
+      }
+      OS << ")";
+      return;
+    }
   }
   if (const CallExpr *Call = getCxConstructionCall(E)) {
     const FunctionDecl *FD = Call->getDirectCallee();

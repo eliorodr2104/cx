@@ -68,7 +68,24 @@ observable effects are not silently reordered to match field order.
 The implementation must distinguish first initialization from assignment to an
 already initialized field. Defaults execute according to the automatic initialization
 phase; overwriting a managed default performs normal assignment cleanup.
-Whether a default may refer to an earlier field is still open.
+A default may read an earlier field that holds a value when the defaults are
+applied: one with a default of its own, or, in a type without a custom initializer,
+any earlier field, since construction is given every field without a default.
+Defaults are applied in declaration order, so each value is computed once:
+
+```c
+struct Size {
+    int width
+    int height = width * 2
+}
+
+Size s = Size(width: 3)       // height is 6
+```
+
+In a type with a custom initializer, a field without a default is set by the
+initializer after the defaults are applied, so a default cannot read it; the
+initializer computes the value instead. A braced list cannot apply a default that
+reads fields: it gives the field, or the value is constructed.
 
 ## Definite initialization
 

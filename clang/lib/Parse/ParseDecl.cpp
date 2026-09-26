@@ -4937,6 +4937,9 @@ void Parser::ParseStructDeclaration(
     // surface. `= ...` on a member is not valid C.
     if (getLangOpts().CX && Tok.is(tok::equal)) {
       SourceLocation EqualLoc = ConsumeToken();
+      // The fields declared before this one are in scope by name.
+      llvm::SaveAndRestore<FieldDecl *> Defaulting(
+          Actions.CxDefaultedField, dyn_cast_or_null<FieldDecl>(Field));
       ExprResult Init;
       if (Tok.is(tok::l_brace)) {
         // `int counts[4] = {}`: arrays and aggregates cannot be assigned

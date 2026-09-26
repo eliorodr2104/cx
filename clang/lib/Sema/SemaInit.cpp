@@ -860,6 +860,14 @@ void InitListChecker::FillInEmptyInitForField(unsigned Init, FieldDecl *Field,
       // no `this` to bind, so it is used directly rather than through the
       // C++ default-member-initializer machinery.
       if (!SemaRef.getLangOpts().CPlusPlus) {
+        // A default that reads other fields needs the object it is built
+        // for, which only construction has.
+        if (SemaRef.isCxDependentDefault(Field)) {
+          SemaRef.Diag(Loc, diag::err_cx_default_reads_in_braces)
+              << Field << Field->getParent()->getName();
+          hadError = true;
+          return;
+        }
         if (Expr *Default = Field->getInClassInitializer()) {
           if (Init < NumInits)
             ILE->setInit(Init, Default);

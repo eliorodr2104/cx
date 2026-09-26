@@ -4295,6 +4295,22 @@ public:
   /// \c ActOnCxConstruction has already checked exactly the fields the call
   /// writes -- a field taking its declared default is not one of them.
   bool CxBuildingConstruction = false;
+  /// Cx: the field whose declaration-site default is being parsed; its
+  /// earlier fields are in scope by name.
+  FieldDecl *CxDefaultedField = nullptr;
+  /// Cx: `width` in the default of a later field of the same record.
+  ExprResult BuildCxDefaultFieldRef(const DeclarationNameInfo &NameInfo);
+  /// Cx: whether \p FD's default reads other fields; they are collected in
+  /// \p Read when given.
+  bool isCxDependentDefault(const FieldDecl *FD,
+                            SmallVectorImpl<const FieldDecl *> *Read = nullptr);
+  /// Cx: after \p Object is initialized with every other default, assign
+  /// each default of \p Fields that reads other fields, in order.
+  void applyCxDependentDefaults(VarDecl *Object, ArrayRef<FieldDecl *> Fields,
+                                SmallVectorImpl<Stmt *> &Body);
+  /// Cx: a store into a field of the object a construction is building, which
+  /// holds no value yet.
+  bool isCxConstructionStore(const Expr *E) const;
 
   /// Set while a Cx method call takes its receiver's address. Whether that is
   /// a write depends on the method the call selects, which is only known
