@@ -1018,6 +1018,9 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
       if (CGF.CGM.getHLSLRuntime().emitGlobalResourceArray(CGF, E, Dest))
         break;
     Visit(E->getSubExpr());
+    // Cx: a resource variable read by value has moved out.
+    if (E->getCastKind() == CK_LValueToRValue)
+      CGF.markCxConsumed(E->getSubExpr());
     break;
   case CK_HLSLAggregateSplatCast: {
     Expr *Src = E->getSubExpr();
@@ -1422,7 +1425,22 @@ void AggExprEmitter::VisitBinAssign(const BinaryOperator *E) {
                                           AggValueSlot::DoesNotNeedGCBarriers,
                                           AggValueSlot::IsNotAliased,
                                           AggValueSlot::DoesNotOverlap));
+    // A consumed variable destroys its old value only if it still has one.
+    const auto *DRE = dyn_cast<DeclRefExpr>(E->getLHS()->IgnoreParens());
+    const auto *VD = DRE ? dyn_cast<VarDecl>(DRE->getDecl()) : nullptr;
+    llvm::Value *Alive = VD ? CGF.CxAliveFlags.lookup(VD) : nullptr;
+    llvm::BasicBlock *Done = nullptr;
+    if (Alive) {
+      llvm::BasicBlock *Destroy = CGF.createBasicBlock("cx.replace");
+      Done = CGF.createBasicBlock("cx.replace.done");
+      Builder.CreateCondBr(Builder.CreateFlagLoad(Alive), Destroy, Done);
+      CGF.EmitBlock(Destroy);
+    }
     CGF.emitCxResourceDestroy(LHS.getAddress(), LHSTy);
+    if (Alive) {
+      CGF.EmitBlock(Done);
+      Builder.CreateFlagStore(true, Alive);
+    }
     CGF.EmitAggregateCopy(LHS, CGF.MakeAddrLValue(Tmp, LHSTy), LHSTy,
                           AggValueSlot::MayOverlap);
     return;

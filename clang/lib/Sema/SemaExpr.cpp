@@ -754,7 +754,8 @@ ExprResult Sema::DefaultLvalueConversion(Expr *E) {
   // generated construction is built, is a new value: reading it moves it.
   if (getLangOpts().CX && !CxMovingValue && T->isRecordType() &&
       !isUnevaluatedContext() &&
-      !isa<CompoundLiteralExpr>(E->IgnoreParens()) && isCxResourceType(T))
+      !isa<CompoundLiteralExpr>(E->IgnoreParens()) &&
+      !(CxConsuming && isCxConsumable(E)) && isCxResourceType(T))
     Diag(E->getExprLoc(), diag::err_cx_resource_copy)
         << T.getUnqualifiedType();
 
@@ -6365,6 +6366,9 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
             << Arg->getType() << ProtoArgType;
       }
 
+      // Cx: a resource argument moves into the parameter, which owns it.
+      llvm::SaveAndRestore<bool> Consuming(
+          CxConsuming, getLangOpts().CX && isCxResourceType(ProtoArgType));
       ExprResult ArgE = PerformCopyInitialization(
           Entity, SourceLocation(), Arg, IsListInitialization, AllowExplicit);
       if (ArgE.isInvalid())

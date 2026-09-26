@@ -1234,6 +1234,15 @@ void Sema::applyCxDependentDefaults(VarDecl *Object,
   }
 }
 
+bool Sema::isCxConsumable(const Expr *E) const {
+  const auto *DRE = dyn_cast<DeclRefExpr>(E->IgnoreParens());
+  const auto *VD = DRE ? dyn_cast<VarDecl>(DRE->getDecl()) : nullptr;
+  // A local or a by-value parameter owns its value; `self`, what a pointer
+  // reaches and a field do not.
+  return VD && VD->hasLocalStorage() && !VD->isImplicit() &&
+         isCxResourceType(VD->getType()) && !VD->getType()->isArrayType();
+}
+
 bool Sema::isCxConstructionStore(const Expr *E) const {
   const auto *ME = dyn_cast<MemberExpr>(E->IgnoreParens());
   const auto *DRE =
@@ -1870,6 +1879,9 @@ ExprResult Sema::ActOnCxConstruction(ParsedType Ty, SourceLocation TypeLoc,
   // conversions and diagnostics apply to each field. Access was checked per
   // field above, on exactly the ones this call writes.
   llvm::SaveAndRestore<bool> Building(CxBuildingConstruction, true);
+  // A resource value given for a field moves into it, when the list is
+  // checked against the record below.
+  llvm::SaveAndRestore<bool> Consuming(CxConsuming, true);
   Expr *Init = ActOnInitList(LParenLoc, FieldInits, RParenLoc).getAs<Expr>();
   if (!Init)
     return ExprError();

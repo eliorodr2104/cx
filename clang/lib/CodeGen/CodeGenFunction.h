@@ -2251,6 +2251,14 @@ public:
   void emitCxResourceDestroy(Address Addr, QualType T);
   /// Cx: a deinit destroys the fields that have one after its body.
   void EmitCxDeinitFieldCleanups(const FunctionDecl *FD);
+  /// Cx: destroy the resource variable \p D at \p Addr when its scope
+  /// ends; a variable that is consumed somewhere only if it still holds its
+  /// value then.
+  void pushCxVarDestroy(const VarDecl &D, Address Addr);
+  /// Cx: \p E, a resource variable read by value, has moved out.
+  void markCxConsumed(const Expr *E);
+  /// Cx: whether each consumed resource variable still holds its value.
+  llvm::DenseMap<const VarDecl *, llvm::Value *> CxAliveFlags;
   /// Cx: whether an assignment to \p LHS initializes storage that holds no
   /// value yet, so nothing is destroyed first.
   bool isCxRawResourceStore(const Expr *LHS) const;

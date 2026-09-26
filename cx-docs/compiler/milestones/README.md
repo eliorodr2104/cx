@@ -50,3 +50,4 @@ ones.
 - [M6.1: `.case` in aggregate and tuple elements](M6.1.md): **Completed**
 - [M6.2: Enum and recovery hardening](M6.2.md): **Completed**
 - [M7.1: Field defaults that read earlier fields](M7.1.md): **Completed**
+- [M7.2: Moving resource locals](M7.2.md): **Completed**

@@ -29,7 +29,6 @@ typedef struct Owner { File file; int count; } Owner
 File open(int f) { return File(f) }
 
 extern File global // expected-error {{a variable with static storage cannot hold 'File' (aka 'struct File'), which has a deinit}}
-void param(File f) {} // expected-error {{a parameter cannot hold 'File' (aka 'struct File'), which has a deinit}}
 typedef (File, int) Pair // expected-error {{a tuple element cannot hold 'File' (aka 'struct File'), which has a deinit}}
 enum Slot { case some(File f), none } // expected-error {{an enum payload cannot hold 'File' (aka 'struct File'), which has a deinit}}
 
@@ -39,8 +38,7 @@ File copies(File *p) {
   b = a // expected-error {{'File' (aka 'struct File') has a deinit, so it cannot be copied}}
   File c = *p // expected-error {{'File' (aka 'struct File') has a deinit, so it cannot be copied}}
   File d = (b = File(2)) // expected-error {{'File' (aka 'struct File') has a deinit, so it cannot be copied}}
-  Owner o = Owner(file: a, count: 1) // expected-error 2 {{'File' (aka 'struct File') has a deinit, so it cannot be copied}}
-  return a // expected-error {{'File' (aka 'struct File') has a deinit, so it cannot be copied}}
+  return File(0)
 }
 
 void storage(void) {

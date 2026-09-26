@@ -70,6 +70,50 @@ void CodeGenFunction::emitCxResourceDestroy(Address Addr, QualType T) {
   emitDestroy(Addr, T, destroyCxResource, /*useEHCleanupForArray=*/false);
 }
 
+namespace {
+/// Destroys a consumed variable only if it still holds its value.
+struct DestroyCxIfAlive final : EHScopeStack::Cleanup {
+  Address Addr;
+  QualType T;
+  llvm::Value *Flag;
+  DestroyCxIfAlive(Address Addr, QualType T, llvm::Value *Flag)
+      : Addr(Addr), T(T), Flag(Flag) {}
+  void Emit(CodeGenFunction &CGF, Flags) override {
+    llvm::BasicBlock *Destroy = CGF.createBasicBlock("cx.destroy");
+    llvm::BasicBlock *Done = CGF.createBasicBlock("cx.destroy.done");
+    CGF.Builder.CreateCondBr(CGF.Builder.CreateFlagLoad(Flag, "cx.alive"),
+                             Destroy, Done);
+    CGF.EmitBlock(Destroy);
+    CGF.emitCxResourceDestroy(Addr, T);
+    CGF.EmitBlock(Done);
+  }
+};
+} // namespace
+
+void CodeGenFunction::pushCxVarDestroy(const VarDecl &D, Address Addr) {
+  if (!isCxResourceType(D.getType()))
+    return;
+  if (!D.hasAttr<CxConsumedAttr>()) {
+    pushCxResourceDestroy(Addr, D.getType());
+    return;
+  }
+  RawAddress Flag =
+      CreateTempAlloca(Builder.getInt1Ty(), CharUnits::One(), "cx.alive");
+  Builder.CreateFlagStore(true, Flag.getPointer());
+  CxAliveFlags[&D] = Flag.getPointer();
+  EHStack.pushCleanup<DestroyCxIfAlive>(NormalAndEHCleanup, Addr, D.getType(),
+                                        Flag.getPointer());
+}
+
+void CodeGenFunction::markCxConsumed(const Expr *E) {
+  if (CxAliveFlags.empty())
+    return;
+  const auto *DRE = dyn_cast<DeclRefExpr>(E->IgnoreParens());
+  const auto *VD = DRE ? dyn_cast<VarDecl>(DRE->getDecl()) : nullptr;
+  if (llvm::Value *Flag = VD ? CxAliveFlags.lookup(VD) : nullptr)
+    Builder.CreateFlagStore(false, Flag);
+}
+
 void CodeGenFunction::EmitCxDeinitFieldCleanups(const FunctionDecl *FD) {
   if (!getLangOpts().CX || !isCxDeinit(FD) || !FD->getNumParams())
     return;

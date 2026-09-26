@@ -2815,6 +2815,14 @@ def err_cx_deinit_call : Error<
   "%1 has no deinit}0">;
 def err_cx_init_in_place_value : Error<
   "'init' constructs in place only through a pointer">;
+def err_cx_used_after_consume : Error<
+  "%0 is used after it is consumed">;
+def note_cx_consumed_here : Note<"consumed here">;
+def err_cx_consume_in_defer : Error<
+  "a deferred block cannot consume %0">;
+def err_cx_consume_deferred_use : Error<
+  "%0 cannot be consumed, since a deferred block uses it">;
+def note_cx_deferred_use : Note<"used by this deferred block">;
 def err_cx_delegation_outside_init : Error<
   "'self.init' can only be called in an initializer">;
 def err_cx_delegation_before : Error<

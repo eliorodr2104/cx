@@ -1665,6 +1665,9 @@ void CodeGenFunction::EmitReturnStmt(const ReturnStmt &S) {
     // that the cleanup code should not destroy the variable.
     if (llvm::Value *NRVOFlag = NRVOFlags[S.getNRVOCandidate()])
       Builder.CreateFlagStore(Builder.getTrue(), NRVOFlag);
+    // Cx: the returned resource is already the caller's.
+    if (llvm::Value *Alive = CxAliveFlags.lookup(S.getNRVOCandidate()))
+      Builder.CreateFlagStore(false, Alive);
   } else if (!ReturnValue.isValid() || (RV && RV->getType()->isVoidType())) {
     // Make sure not to return anything, but evaluate the expression
     // for side effects.

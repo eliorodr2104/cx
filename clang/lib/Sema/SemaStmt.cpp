@@ -42,6 +42,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/SaveAndRestore.h"
 
 using namespace clang;
 using namespace sema;
@@ -4301,6 +4302,9 @@ StmtResult Sema::BuildReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp,
       // we have a non-void function with an expression, continue checking
       InitializedEntity Entity =
           InitializedEntity::InitializeResult(ReturnLoc, RetType);
+      // Cx: a returned resource local moves to the caller.
+      llvm::SaveAndRestore<bool> Consuming(
+          CxConsuming, getLangOpts().CX && isCxResourceType(RetType));
       ExprResult Res = PerformMoveOrCopyInitialization(
           Entity, NRInfo, RetValExp, SupressSimplerImplicitMoves);
       if (Res.isInvalid() && AllowRecovery)

@@ -16019,9 +16019,6 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                                   SourceLocation NameLoc,
                                   const IdentifierInfo *Name, QualType T,
                                   TypeSourceInfo *TSInfo, StorageClass SC) {
-  // Cx: a parameter would hold a copy of its argument.
-  CheckCxResourceStorage(T, NameLoc.isValid() ? NameLoc : StartLoc, 2);
-
   // In ARC, infer a lifetime qualifier for appropriate parameter types.
   if (getLangOpts().ObjCAutoRefCount &&
       T.getObjCLifetime() == Qualifiers::OCL_None &&
@@ -16833,10 +16830,14 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body, bool IsInstantiation,
       CheckCoroutineWrapper(FD);
   }
 
-  // Cx: an initializer must initialize every field on every path.
-  if (getLangOpts().CX && FD && Body && isCxInitializer(FD) &&
-      !FD->isInvalidDecl() && !FSI->hasUnrecoverableErrorOccurred())
-    CheckCxDefiniteInitialization(FD, Body);
+  // Cx: an initializer must initialize every field on every path, and no
+  // resource is used after it is consumed.
+  if (getLangOpts().CX && FD && Body && !FD->isInvalidDecl() &&
+      !FSI->hasUnrecoverableErrorOccurred()) {
+    if (isCxInitializer(FD))
+      CheckCxDefiniteInitialization(FD, Body);
+    CheckCxConsumes(FD, Body);
+  }
 
   // Diagnose invalid SYCL kernel entry point function declarations
   // and build SYCLKernelCallStmts for valid ones.

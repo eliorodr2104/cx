@@ -2246,7 +2246,7 @@ void CodeGenFunction::EmitAutoVarCleanups(const AutoVarEmission &emission) {
   // Cx: a resource local is destroyed when its scope ends. The implicit
   // object a construction builds is moved out instead.
   if (getLangOpts().CX && !D.isImplicit())
-    pushCxResourceDestroy(emission.getObjectAddress(*this), D.getType());
+    pushCxVarDestroy(D, emission.getObjectAddress(*this));
 
   // In GC mode, honor objc_precise_lifetime.
   if (getLangOpts().getGC() != LangOptions::NonGC &&
@@ -2783,6 +2783,10 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
   }
 
   llvm::Value *ArgVal = (DoStore ? Arg.getDirectValue() : nullptr);
+
+  // Cx: a resource passed by value belongs to the callee, which destroys it.
+  if (getLangOpts().CX && !CurFuncIsThunk && isa<ParmVarDecl>(D))
+    pushCxVarDestroy(D, DeclPtr);
 
   LValue lv = MakeAddrLValue(DeclPtr, Ty);
   // If this is a thunk, don't bother with ARC lifetime management.

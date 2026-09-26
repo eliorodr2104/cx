@@ -5254,6 +5254,8 @@ void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
       LValue L = EmitLValue(cast<CastExpr>(E)->getSubExpr());
       assert(L.isSimple());
       args.addUncopiedAggregate(L, type);
+      // Cx: a resource variable passed by value moves into the parameter.
+      markCxConsumed(cast<CastExpr>(E)->getSubExpr());
       return;
     }
   }

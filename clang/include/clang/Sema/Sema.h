@@ -4569,6 +4569,13 @@ public:
                                 MultiExprArg Args, SourceLocation RParenLoc);
   /// Set while Cx builds a move of a new value, which reads it once.
   bool CxMovingValue = false;
+  /// Set while Cx converts a by-value argument or a returned value of a
+  /// resource type, which consumes a local or parameter named directly.
+  bool CxConsuming = false;
+  /// Cx: whether \p E names a local or a parameter that can be consumed.
+  bool isCxConsumable(const Expr *E) const;
+  /// Cx: no local or parameter is used after it is consumed, on any path.
+  void CheckCxConsumes(FunctionDecl *FD, Stmt *Body);
   /// The first custom initializer \p RD declares, or null.
   FunctionDecl *getCxFirstInitializer(const RecordDecl *RD) const;
   /// Check that an initializer's body initializes every field of `self` on

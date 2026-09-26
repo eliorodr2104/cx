@@ -101,7 +101,8 @@ Every C/GNU standard, as in M0.
 
 ## Known limitations
 
-- **No moves** of a local: `return a` and passing `a` are copies (M7.2).
+- ~~**No moves** of a local: `return a` and passing `a` are copies (M7.2).~~
+  Supplied by [M7.2](M7.2.md).
 - **Raw memory is unchecked**, as `malloc` and `free` are.
 - **C callers** will see a resource type as opaque once C export exists (M15).
 

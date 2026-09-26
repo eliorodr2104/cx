@@ -234,9 +234,38 @@ returns a new value.
   is an error.
 - **Arrays** are initialized with every element, `File fs[2] = { File("a"),
   File("b") }`, and destroyed from the last element to the first.
-- Parameters, variadic arguments, static storage, union members, tuple elements
-  and enum payloads cannot hold a resource value. Moving a local out, for example
-  by `return a`, is planned.
+- Variadic arguments, static storage, union members, tuple elements and enum
+  payloads cannot hold a resource value.
+
+### Borrowing and consuming
+
+A pointer borrows a resource, `const` or not, as in C: the caller keeps it, and
+nothing reached through a pointer can be moved out. A parameter of a resource type
+taken by value consumes its argument: the value moves into the function, which
+destroys it at its end unless it moves it on. `return` moves a local or such a
+parameter to the caller.
+
+```c
+void show(const File *f)      // borrows
+void close(File f) {}         // consumes; f is destroyed here
+
+File open(char* path) {
+    File f = File(path)
+    show(&f)
+    return f                  // moves to the caller
+}
+
+File a = open("x.txt")
+close(a)                      // a moves into close
+show(&a)                      // error: 'a' is used after it is consumed
+```
+
+Only a local or a by-value parameter named directly is consumed, by passing it by
+value, returning it, or giving it for a field in a construction or a braced list; a
+field, an array element or `*p` is not. Once consumed, a variable is not used on any path until it
+is assigned again. A variable consumed on some paths only is destroyed at the end
+of its scope only when it still holds its value. A variable a deferred block uses
+cannot be consumed, and a deferred block consumes nothing.
 
 ### Raw memory
 

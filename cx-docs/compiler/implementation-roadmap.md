@@ -25,9 +25,9 @@ they cannot honestly be called finished before those facilities exist.
 | M6.2 | Enum and recovery hardening | Expected type for payload arguments (`.wrap(.red)`); no `goto` into a Cx switch clause; error recovery that stops at a line break instead of the next `;` | **Completed** ([record](milestones/M6.2.md)) |
 | M7 | Unified cleanup and value operations | Defer, copy/destruction, partial initialization tests | **Completed** ([M7a](milestones/M7a.md), [M7b](milestones/M7b.md), [M7c](milestones/M7c.md)) |
 | M7.1 | Field defaults that read earlier fields | Declaration order; earlier defaulted fields, or any earlier field without a custom init | **Completed** ([record](milestones/M7.1.md)) |
-| M7.2 | Moving resource locals | `return a` and passing a local consume it; no use afterwards, no `deinit` on that path | |
-| M8 | Protocol requirements and static conformance | Defaults, refinement, associated types, access/coherence | |
-| M9 | Checked type generics within one compilation context | Constraints, same-type relations, concrete specialization | |
+| M7.2 | Moving resource locals | `return a` and passing a local consume it; no use afterwards, no `deinit` on that path | **Completed** ([record](milestones/M7.2.md)) |
+| M8 | Protocol requirements and static conformance | Defaults, refinement, associated types, access/coherence; `Copyable` as an implicit protocol, `~Copyable` spelled explicitly | |
+| M9 | Checked type generics within one compilation context | Constraints, same-type relations, concrete specialization; `<T: ~Copyable>` | |
 | M10 | Optional/Span and iteration primitives | Iterator protocol, ranges, for-in/destructuring; G03/G11 | |
 | M11 | Class runtime and strong/weak ownership baseline | Correct refcount state machine and failure model first | |
 | M12 | Callable types, noncapturing then capturing closures | ABI adapters; stack vs heap context lifetime; G07 | |

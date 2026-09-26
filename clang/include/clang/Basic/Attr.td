@@ -1110,6 +1110,13 @@ def CxEnumPayload : InheritableAttr {
 
 /// The hidden variable a Cx switch evaluates its condition into; it marks the
 /// C switch that lowers a Cx one. Added by Sema.
+def CxConsumed : InheritableAttr {
+  let Spellings = [];
+  let Subjects = SubjectList<[Var], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+}
+
 def CxMatch : InheritableAttr {
   let Spellings = [];
   let Subjects = SubjectList<[Var], ErrorDiag>;

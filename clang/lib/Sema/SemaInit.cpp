@@ -40,6 +40,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/SaveAndRestore.h"
 
 using namespace clang;
 
@@ -1582,6 +1583,12 @@ void InitListChecker::CheckSubElementType(const InitializedEntity &Entity,
                                           unsigned &StructuredIndex,
                                           bool DirectlyDesignated) {
   Expr *expr = IList->getInit(Index);
+
+  // Cx: a resource local given for an element moves into it, as it does into
+  // a by-value parameter.
+  llvm::SaveAndRestore<bool> Consuming(
+      SemaRef.CxConsuming,
+      SemaRef.CxConsuming || SemaRef.isCxResourceType(ElemType));
 
   if (ElemType->isReferenceType())
     return CheckReferenceType(Entity, IList, ElemType, Index,
