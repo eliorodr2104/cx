@@ -4,6 +4,10 @@
 #
 #    pip-compile --generate-hashes --output-file=requirements.txt requirements.txt.in
 #
+accessible-pygments==0.0.5 \
+    --hash=sha256:40918d3e6a2b619ad424cb91e556bd3bd8865443d9f22f1dcdf79e33c8046872 \
+    --hash=sha256:88ae3211e68a1d0b011504b2ffc1691feafce124b845bd072ab6f9f66f34d4b7
+    # via furo
 alabaster==0.7.13 \
     --hash=sha256:1ee19aca801bbabb5ba3f5f258e4422dfa86f82f3e9cefb0859b283cdd7f62a3 \
     --hash=sha256:a27a4a084d5e690e16e01e03ad2b2e552c61a65469419b907243193de1a84ae2
@@ -124,9 +128,9 @@ docutils==0.20.1 \
     #   myst-parser
     #   recommonmark
     #   sphinx
-furo==2024.1.29 \
-    --hash=sha256:3548be2cef45a32f8cdc0272d415fcb3e5fa6a0eb4ddfe21df3ecf1fe45a13cf \
-    --hash=sha256:4d6b2fe3f10a6e36eb9cc24c1e7beb38d7a23fc7b3c382867503b7fcac8a1e02
+furo==2025.12.19 \
+    --hash=sha256:188d1f942037d8b37cd3985b955839fea62baa1730087dc29d157677c857e2a7 \
+    --hash=sha256:bb0ead5309f9500130665a26bee87693c41ce4dbdff864dbfb6b0dae4673d24f
     # via -r requirements.txt.in
 idna==3.6 \
     --hash=sha256:9ecdbbd083b06798ae1e86adcbfe8ab1479cf864e4ee30fe4e46a003d12491ca \
@@ -222,18 +226,21 @@ mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
     # via markdown-it-py
-myst-parser==2.0.0 \
-    --hash=sha256:7c36344ae39c8e740dad7fdabf5aa6fc4897a813083c6cc9990044eb93656b14 \
-    --hash=sha256:ea929a67a6a0b1683cdbe19b8d2e724cd7643f8aa3e7bb18dd65beac3483bead
+myst-parser==3.0.1 \
+    --hash=sha256:6457aaa33a5d474aca678b8ead9b3dc298e89c68e67012e73146ea6fd54babf1 \
+    --hash=sha256:88f0cb406cb363b077d176b51c476f62d60604d68a8dcdf4832e080441301a87
     # via -r requirements.txt.in
 packaging==23.2 \
     --hash=sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5 \
     --hash=sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7
-    # via sphinx
+    # via
+    #   sphinx
+    #   sphinx-automodapi
 pygments==2.17.2 \
     --hash=sha256:b27c2826c47d0f3219f29554824c30c5e8945175d888647acd804ddd04af846c \
     --hash=sha256:da46cec9fd2de5be3a8a784f434e4c4ab670b4ff54d605c4c2717e9d49c4c367
     # via
+    #   accessible-pygments
     #   furo
     #   sphinx
 pyyaml==6.0.1 \
@@ -319,9 +326,9 @@ sphinx==7.2.6 \
     #   sphinxcontrib-htmlhelp
     #   sphinxcontrib-qthelp
     #   sphinxcontrib-serializinghtml
-sphinx-automodapi==0.17.0 \
-    --hash=sha256:4d029cb79eef29413e94ab01bb0177ebd2d5ba86e9789b73575afe9c06ae1501 \
-    --hash=sha256:7ccdadad57add4aa9149d9f2bb5cf28c8f8b590280b4735b1156ea8355c423a1
+sphinx-automodapi==0.22.0 \
+    --hash=sha256:8ecbe8c8ba33a1e3dbe03aea06879062567d611b543da3f33367512d45118b01 \
+    --hash=sha256:9a6745d606eb948321f0bb7bd4511dc6d8481da8819caa1604d7138910173b38
     # via -r requirements.txt.in
 sphinx-basic-ng==1.0.0b2 \
     --hash=sha256:9ec55a47c90c8c002b5960c57492ec3021f5193cb26cebc2dc4ea226848651c9 \
@@ -335,13 +342,13 @@ sphinx-markdown-tables==0.0.17 \
     --hash=sha256:2bd0c30779653e4dd120300cbd9ca412c480738cc2241f6dea477a883f299e04 \
     --hash=sha256:6bc6d3d400eaccfeebd288446bc08dd83083367c58b85d40fe6c12d77ef592f1
     # via -r requirements.txt.in
-sphinx-reredirects==0.1.2 \
-    --hash=sha256:3a22161771aadd448bb608a4fe7277252182a337af53c18372b7104531d71489 \
-    --hash=sha256:a0e7213304759b01edc22f032f1715a1c61176fc8f167164e7a52b9feec9ac64
+sphinx-reredirects==0.1.6 \
+    --hash=sha256:c491cba545f67be9697508727818d8626626366245ae64456fe29f37e9bbea64 \
+    --hash=sha256:efd50c766fbc5bf40cd5148e10c00f2c00d143027de5c5e48beece93cc40eeea
     # via -r requirements.txt.in
-sphinxcontrib-applehelp==1.0.8 \
-    --hash=sha256:c40a4f96f3776c4393d933412053962fac2b84f4c99a7982ba42e09576a70619 \
-    --hash=sha256:cb61eb0ec1b61f349e5cc36b2028e9e7ca765be05e49641c97241274753067b4
+sphinxcontrib-applehelp==2.0.0 \
+    --hash=sha256:2f29ef331735ce958efa4734873f084941970894c6090408b079c61b2e1c06d1 \
+    --hash=sha256:4cd3f0ec4ac5dd9c17ec65e9ab272c9b867ea77425228e68ecf08d6b28ddbdb5
     # via
     #   -r requirements.txt.in
     #   sphinx
